@@ -1,0 +1,96 @@
+*,
+*::before,
+*::after {
+  box-sizing: border-box;
+}
+
+body {
+  margin: 0;
+  overflow: hidden;
+  font-family: var(--app-font-family), var(--pt-font-stack), system-ui, sans-serif;
+  background-color: var(--app-shell-bg);
+  color: var(--app-text-strong);
+  transition:
+    background-color 0.35s ease,
+    color 0.35s ease;
+}
+
+html,
+body,
+#root {
+  height: 100%;
+  width: 100%;
+}
+
+.viewport {
+  position: fixed;
+  inset: 0;
+  overflow: hidden;
+}
+
+.viewport canvas {
+  display: block;
+  height: 100%;
+  width: 100%;
+}
+
+.mesh-error-toast {
+  position: fixed;
+  top: 72px;
+  left: 50%;
+  transform: translateX(-50%);
+  z-index: 140;
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  max-width: min(620px, 92vw);
+  padding: 10px 12px;
+  padding-left: 16px;
+  border-radius: 12px;
+  border: 1px solid var(--app-toast-border);
+  background: var(--app-toast-fill);
+  box-shadow:
+    0 16px 32px rgb(16 23 42 / 0.38),
+    0 0 0 1px rgb(255 255 255 / 0.06) inset;
+}
+
+.mesh-error-toast__text {
+  margin: 0;
+  flex: 1;
+  font-size: 0.894rem;
+  line-height: 1.54;
+  color: var(--app-toast-text);
+}
+
+.mesh-error-toast__dismiss {
+  box-sizing: border-box;
+  display: grid;
+  place-items: center;
+  flex-shrink: 0;
+  width: var(--app-ds-icon-btn-size);
+  height: var(--app-ds-icon-btn-size);
+  margin: 0;
+  padding: 0;
+  border: none;
+  border-radius: var(--app-ds-icon-btn-border-radius);
+  font-size: 1.38rem;
+  line-height: 1;
+  color: rgb(253 242 247 / 0.88);
+  background: transparent;
+  cursor: pointer;
+  transition:
+    background-color 220ms ease,
+    color 220ms ease;
+}
+
+.mesh-error-toast__dismiss:focus-visible {
+  outline: none;
+  box-shadow:
+    0 0 0 1px rgb(253 242 247 / 0.2),
+    0 0 0 3px rgb(167 182 248 / 0.78);
+}
+
+.mesh-error-toast__dismiss:hover {
+  background: rgb(255 255 255 / 0.12);
+  color: var(--app-toast-text);
+}

@@ -1,0 +1,50 @@
+.hit {
+  position: fixed;
+  top: 16px;
+  left: 16px;
+  z-index: 136;
+  box-sizing: border-box;
+  display: grid;
+  place-items: center;
+  width: var(--app-ds-icon-btn-size);
+  height: var(--app-ds-icon-btn-size);
+  padding: 0;
+  margin: 0;
+  border: none;
+  border-radius: var(--app-ds-icon-btn-border-radius);
+  background: transparent;
+  color: var(--app-ds-icon-btn-fg);
+  cursor: pointer;
+  transition:
+    background-color 220ms ease,
+    color 220ms ease,
+    transform 160ms ease;
+}
+
+.hit svg {
+  width: 16px;
+  height: 16px;
+}
+
+.hit:hover:not(:disabled) {
+  background: var(--app-ds-icon-btn-hover-bg);
+  color: var(--app-ds-icon-btn-fg-hover);
+}
+
+.hit:active:not(:disabled) {
+  transform: scale(0.985);
+}
+
+.hit:focus-visible {
+  outline: none;
+  box-shadow:
+    0 0 0 1px var(--app-ds-focus-ring-inner),
+    0 0 0 3px var(--app-ds-focus-ring-outer);
+}
+
+.sr {
+  position: absolute;
+  clip: rect(0 0 0 0);
+  width: 1px;
+  height: 1px;
+}

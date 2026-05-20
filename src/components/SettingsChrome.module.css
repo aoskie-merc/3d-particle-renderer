@@ -1,0 +1,344 @@
+.sheet {
+  position: fixed;
+  top: 0;
+  bottom: 0;
+  right: 0;
+  z-index: 120;
+  display: flex;
+  flex-direction: column;
+  width: min(400px, 92vw);
+  font-size: 0.92rem;
+  pointer-events: none;
+  visibility: hidden;
+  color: var(--app-text-strong);
+  background: var(--app-sheet-fill);
+  border-radius: 20px 0 0 20px;
+  border: 1px solid var(--app-sheet-border);
+  border-right: none;
+  box-shadow: none;
+  transform: translate3d(104%, 0, 0);
+  transition:
+    transform 0.41s cubic-bezier(0.4, 0, 0.2, 1),
+    opacity 0.32s ease,
+    visibility 0.32s,
+    border-color 0.35s ease,
+    background 0.35s ease,
+    color 0.35s ease;
+  backdrop-filter: blur(18px) saturate(1.12);
+  opacity: 0;
+}
+
+.sheetOpen {
+  visibility: visible;
+  pointer-events: auto;
+  opacity: 1;
+  box-shadow: var(--app-sheet-open-shadow);
+  transform: translate3d(0, 0, 0);
+}
+
+.sheetHeading {
+  display: flex;
+  flex-shrink: 0;
+  align-items: flex-start;
+  justify-content: space-between;
+  padding: 20px 20px 8px;
+  border-bottom: 1px solid var(--app-sheet-head-rule);
+}
+
+.sheetKicker {
+  margin: 0;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  font-size: 0.68rem;
+  color: var(--app-text-muted);
+}
+
+.sheetTitle {
+  margin: 10px 0 0;
+  font-size: 1.06rem;
+  font-weight: 650;
+  color: var(--app-text-strong);
+}
+
+.iconClose {
+  box-sizing: border-box;
+  display: grid;
+  place-items: center;
+  flex-shrink: 0;
+  width: var(--app-ds-icon-btn-size);
+  height: var(--app-ds-icon-btn-size);
+  padding: 0;
+  margin: 0;
+  border: none;
+  border-radius: var(--app-ds-icon-btn-border-radius);
+  font-size: 1.32rem;
+  line-height: 1;
+  color: var(--app-ds-icon-btn-fg);
+  background: transparent;
+  cursor: pointer;
+  transition:
+    background-color 220ms ease,
+    color 220ms ease,
+    transform 160ms ease;
+}
+
+.iconClose:hover {
+  background: var(--app-ds-icon-btn-hover-bg);
+  color: var(--app-ds-icon-btn-fg-hover);
+}
+
+.iconClose:active:not(:disabled) {
+  transform: scale(0.985);
+}
+
+.iconClose:focus-visible {
+  outline: none;
+  box-shadow:
+    0 0 0 1px var(--app-ds-focus-ring-inner),
+    0 0 0 3px var(--app-ds-focus-ring-outer);
+}
+
+.sheetBody {
+  flex: 1;
+  min-height: 0;
+  display: grid;
+  row-gap: 24px;
+  padding: 20px;
+  overflow-y: auto;
+  scrollbar-color: var(--app-scrollbar-thumb) var(--app-scrollbar-track);
+}
+
+.sheetFooter {
+  flex-shrink: 0;
+  border-top: 1px solid var(--app-sheet-head-rule);
+  padding: 14px 20px 20px;
+  background: var(--app-sheet-fill);
+}
+
+.footerActions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+}
+
+.dsSecondaryFooter {
+  cursor: pointer;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border: none;
+  border-radius: 26px;
+  padding: 8px 16px;
+  min-height: 40px;
+  font-family: inherit;
+  font-size: 0.875rem;
+  font-weight: 600;
+  letter-spacing: 0.01em;
+  flex: 1 1 calc(50% - 10px);
+  min-width: min(148px, 100%);
+  color: var(--app-ds-btn-secondary-text);
+  background-color: var(--app-ds-btn-secondary-bg);
+  transition:
+    background-color 0.2s ease,
+    color 0.2s ease,
+    transform 0.12s ease;
+}
+
+.dsSecondaryFooter:focus-visible {
+  outline: none;
+  box-shadow: 0 0 0 2px var(--app-range-accent);
+}
+
+.dsSecondaryFooter:hover {
+  background-color: var(--app-ds-btn-secondary-bg-hover);
+  color: var(--app-ds-btn-secondary-text-hover);
+}
+
+.dsSecondaryFooter:active {
+  transform: scale(0.99);
+}
+
+.section {
+  display: grid;
+  row-gap: 14px;
+}
+
+.sectionHeading {
+  margin: 0;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  font-size: 0.72rem;
+  font-weight: 650;
+  color: var(--app-text-muted);
+}
+
+.row {
+  display: grid;
+  row-gap: 8px;
+  padding-block: 2px;
+}
+
+.rowDisabled {
+  opacity: 0.45;
+  pointer-events: none;
+}
+
+.rowHeading {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 14px;
+}
+
+.label {
+  color: inherit;
+}
+
+.valueChip {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.num {
+  width: min(142px, 38vw);
+  padding: 5px 8px;
+  border-radius: 9px;
+  border: 1px solid var(--app-input-border);
+  background: var(--app-input-bg);
+  color: var(--app-input-text);
+  font-variant-numeric: tabular-nums;
+}
+
+.range {
+  width: 100%;
+  accent-color: var(--app-range-accent);
+}
+
+.rowCompact {
+  display: grid;
+  row-gap: 8px;
+}
+
+.select {
+  width: 100%;
+  padding: 9px 10px;
+  border-radius: 10px;
+  border: 1px solid var(--app-input-border);
+  background: var(--app-input-bg);
+  color: var(--app-input-text);
+}
+
+.colorField {
+  width: 100%;
+  height: 42px;
+  padding: 0;
+  margin: 0;
+  border: none;
+  border-radius: 10px;
+}
+
+.checkRow {
+  display: inline-flex;
+  align-items: center;
+  gap: 10px;
+  font-size: 0.9rem;
+  color: inherit;
+  cursor: pointer;
+}
+
+.dim {
+  position: fixed;
+  inset: 0;
+  z-index: 110;
+  cursor: pointer;
+  border: none;
+  padding: 0;
+  background: var(--app-scrim);
+  transition: background 0.35s ease, opacity 0.32s ease, visibility 0.32s;
+}
+
+.dimHide {
+  opacity: 0;
+  pointer-events: none;
+  visibility: hidden;
+  transition:
+    opacity 0.32s ease,
+    visibility 0.32s;
+}
+
+.dimShow {
+  opacity: 1;
+  visibility: visible;
+  transition:
+    opacity 0.32s ease,
+    visibility 0.32s;
+}
+
+.toggleFab {
+  position: fixed;
+  top: 16px;
+  right: 16px;
+  z-index: 136;
+  box-sizing: border-box;
+  display: grid;
+  place-items: center;
+  width: var(--app-ds-icon-btn-size);
+  height: var(--app-ds-icon-btn-size);
+  padding: 0;
+  margin: 0;
+  border-radius: var(--app-ds-icon-btn-border-radius);
+  border: none;
+  font-size: 17px;
+  line-height: 1;
+  color: var(--app-ds-icon-btn-fg);
+  cursor: pointer;
+  backdrop-filter: none;
+  background: transparent;
+  transition:
+    background-color 220ms ease,
+    color 220ms ease,
+    transform 160ms ease;
+}
+
+.toggleFab:hover {
+  background: var(--app-ds-icon-btn-hover-bg);
+  color: var(--app-ds-icon-btn-fg-hover);
+}
+
+.toggleFab:active:not(:disabled) {
+  transform: scale(0.985);
+}
+
+.toggleFabActive {
+  background: var(--app-ds-icon-btn-active-bg);
+  color: var(--app-ds-icon-btn-fg-hover);
+}
+
+.toggleFab:focus-visible {
+  outline: none;
+  box-shadow:
+    0 0 0 1px var(--app-ds-focus-ring-inner),
+    0 0 0 3px var(--app-ds-focus-ring-outer);
+}
+
+.gearChar {
+  display: block;
+  width: 16px;
+  height: 16px;
+}
+
+.sr {
+  position: absolute;
+  clip: rect(0 0 0 0);
+  width: 1px;
+  height: 1px;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .sheet,
+  .dimHide,
+  .dimShow {
+    transition: none;
+  }
+}

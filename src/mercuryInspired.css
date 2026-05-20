@@ -1,0 +1,23 @@
+/*
+ * Snapshot of Mercury-ish tokens from mercury-web/design-system/tokens/customProperties.css
+ * (standalone tool — literals only; no runtime link to mercury-web.)
+ */
+:root {
+  /* Neutral dark surfaces / text — ds-neutral-base-* */
+  --pt-neutral-950: #171721;
+  --pt-neutral-900: #1e1e2a;
+  --pt-neutral-800: #272735;
+  --pt-neutral-700: #363644;
+  --pt-neutral-500: #70707d;
+  --pt-neutral-300: #c3c3cc;
+
+  /* Blue accents — ds-blue-base / magic */
+  --pt-blue-deep: #112228;
+  --pt-blue-700: #183d4a;
+  --pt-blue-accent: #77becf;
+  --pt-blue-accent-soft: #a9e6f6;
+
+  --pt-font-stack: 'Arcadia Text', system-ui, sans-serif;
+
+  --pt-surface-overlay: rgb(26 52 108 / 0.47);
+}

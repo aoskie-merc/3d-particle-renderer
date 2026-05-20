@@ -1,0 +1,148 @@
+/*
+ * Mirrors mercury-web/src/design-system/tokens/customProperties.css semantic canvas:
+ * Light : `:root { --ds-background-canvas }` → #ededf3
+ * Dark  : `[data-theme='dark'] { --ds-background-canvas }` → #10101a
+ */
+
+[data-theme='light'] {
+  color-scheme: light;
+
+  /* Mercury DS --ds-font-family-text */
+  --app-font-family: 'Arcadia Text', system-ui, sans-serif;
+
+  --app-shell-bg: #ededf3;
+
+  --app-landing-bg:
+    radial-gradient(ellipse at 54% -8%, rgb(82 169 239 / 0.1), rgb(255 255 255 / 0)),
+    linear-gradient(to bottom, #fbfcfd, #ededf3);
+
+  --app-landing-dash: rgb(82 169 239 / 0.35);
+  --app-landing-hot: rgb(119 190 207 / 0.12);
+
+  /*
+   * Drop landing frosted panel (theme-aware; opacity from inline --panel-opacity on .panel)
+   * — ds-background-default + ds-text-title / ds-text-secondary
+   */
+  --app-landing-panel-base: rgb(255 255 255); /* ds-background-default */
+  --app-landing-title: #1e1e2a; /* ds-text-emphasized / title lineage */
+  --app-landing-subtitle: #535461; /* ds-text-secondary */
+  --app-landing-panel-dash: rgb(55 71 217 / 0.42); /* darker dash on light */
+  --app-landing-panel-dash-active: rgb(82 102 235 / 0.58); /* accent */
+  --app-landing-panel-inset-ring: rgb(118 146 239 / 0.24);
+  --app-landing-panel-ambient: rgb(71 132 239 / 0.12);
+
+  --app-text-strong: #363644;
+  --app-text-muted: #70707d;
+
+  --app-sheet-fill: linear-gradient(135deg, rgb(255 255 255 / 0.95), rgb(237 239 239 / 0.72));
+  --app-sheet-border: rgb(199 205 214 / 0.55);
+  --app-sheet-open-shadow:
+    -28px 0 44px rgb(54 54 68 / 0.08), 0 0 0 1px rgb(255 255 255 / 0.55) inset;
+  --app-sheet-head-rule: rgb(199 205 214 / 0.45);
+
+  --app-panel-glass:
+    linear-gradient(145deg, rgb(252 253 255 / 0.84), rgb(237 239 246 / 0.58));
+
+  --app-input-bg: rgb(255 255 255 / 0.96);
+  --app-input-border: rgb(199 205 214 / 0.65);
+  --app-input-text: #363644;
+
+  --app-range-accent: #5266eb;
+
+  --app-scrim: rgb(54 54 68 / 0.12);
+
+  /* Mercury DS tertiary / DSTextInput external suffix icons (sizes + semantics from tokens) */
+  --app-ds-icon-btn-size: 32px;
+  --app-ds-icon-btn-border-radius: 999px;
+  --app-ds-icon-btn-fg: #70707d; /* ds-icon-secondary */
+  --app-ds-icon-btn-fg-hover: #1e1e2a; /* ds-icon-emphasized */
+  --app-ds-icon-btn-hover-bg: #70739329; /* ds-background-secondary-hovered */
+  --app-ds-icon-btn-active-bg: #7073933d; /* slightly stronger than hovered wash */
+  --app-ds-focus-ring-inner: #ffffff; /* ds-background-default */
+  --app-ds-focus-ring-outer: #a7b6f8; /* ds-border-focus-ring */
+
+  --app-scrollbar-thumb: rgb(82 169 239 / 0.35);
+  --app-scrollbar-track: rgb(237 239 239 / 0.7);
+
+  /* DSButton secondary (:root — ds-background-secondary / text-default) */
+  --app-ds-btn-secondary-bg: #7073931a;
+  --app-ds-btn-secondary-bg-hover: #70739329;
+  --app-ds-btn-secondary-text: #363644;
+  --app-ds-btn-secondary-text-hover: #1e1e2a;
+
+  --app-toast-fill: rgb(62 54 61 / 0.92);
+  --app-toast-border: rgb(252 146 180 / 0.55);
+  --app-toast-text: #fdf2f7;
+}
+
+[data-theme='dark'] {
+  color-scheme: dark;
+
+  --app-font-family: 'Arcadia Text', system-ui, sans-serif;
+
+  --app-shell-bg: #10101a;
+
+  --app-landing-bg:
+    radial-gradient(ellipse at 54% -8%, rgb(119 190 207 / 0.12), rgb(16 16 26 / 0)),
+    linear-gradient(to bottom, #171721, #10101a);
+
+  --app-landing-dash: rgb(119 190 207 / 0.45);
+  --app-landing-hot: rgb(82 169 239 / 0.1);
+
+  /* Frosted landing panel — ds-background-surface-floating + ds-text-title / secondary */
+  --app-landing-panel-base: rgb(39 39 53); /* #272735 — ds-background-surface-floating */
+  --app-landing-title: #ffffff; /* ds-text-title */
+  --app-landing-subtitle: #c3c3cc; /* ds-text-secondary */
+  --app-landing-panel-dash: rgb(169 223 239 / 0.36); /* lighter on dark canvas */
+  --app-landing-panel-dash-active: rgb(141 164 245 / 0.55);
+  --app-landing-panel-inset-ring: rgb(119 190 207 / 0.18);
+  --app-landing-panel-ambient: rgb(119 190 207 / 0.12);
+
+  --app-text-strong: #dddde5;
+  --app-text-muted: #9d9da8;
+
+  --app-sheet-fill: linear-gradient(
+    152deg,
+    rgb(39 39 53 / 0.92),
+    rgb(27 27 44 / 0.88)
+  );
+  --app-sheet-border: rgb(180 183 200 / 0.18);
+  --app-sheet-open-shadow:
+    -32px 0 48px rgb(0 0 0 / 0.35),
+    0 0 0 1px rgb(119 190 207 / 0.12) inset;
+  --app-sheet-head-rule: rgb(180 183 200 / 0.22);
+
+  --app-panel-glass:
+    linear-gradient(154deg, rgb(43 43 61 / 0.52), rgb(22 23 39 / 0.44));
+
+  --app-input-bg: rgb(23 23 34 / 0.55);
+  --app-input-border: rgb(180 183 200 / 0.22);
+  --app-input-text: #ededf3;
+
+  --app-range-accent: #8da4f5;
+
+  --app-scrim: rgb(0 0 0 / 0.22);
+
+  /* DS ghost icon surfaces — dark semantic tokens */
+  --app-ds-icon-btn-size: 32px;
+  --app-ds-icon-btn-border-radius: 999px;
+  --app-ds-icon-btn-fg: #9d9da8;
+  --app-ds-icon-btn-fg-hover: #fbfcfd;
+  --app-ds-icon-btn-hover-bg: #b4b7c833;
+  --app-ds-icon-btn-active-bg: #b4b7c847;
+  --app-ds-focus-ring-inner: #171721;
+  --app-ds-focus-ring-outer: #8da4f5;
+
+  --app-scrollbar-thumb: rgb(119 190 207 / 0.35);
+  --app-scrollbar-track: rgb(23 23 34 / 0.45);
+
+  /* DSButton secondary ([data-theme='dark']) */
+  --app-ds-btn-secondary-bg: #b4b7c81f;
+  --app-ds-btn-secondary-bg-hover: #b4b7c833;
+  --app-ds-btn-secondary-text: #dddde5;
+  --app-ds-btn-secondary-text-hover: #f4f5f9;
+
+  --app-toast-fill: rgb(62 48 56 / 0.92);
+  --app-toast-border: rgb(252 146 180 / 0.45);
+  --app-toast-text: #fdf2f7;
+}
