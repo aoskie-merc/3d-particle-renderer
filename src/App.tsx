@@ -53,7 +53,7 @@ export default function App() {
     return () => cancelScheduledPersistHydratedAppState();
   }, [appearance, particleColorFollowsTheme, settings]);
 
-  // ── Sweep trigger animation state ──
+  // ── Trigger animation state ──
   const [triggerPhase, setTriggerPhase] = useState<TTriggerPhase>("idle");
   const [sweepY, setSweepY] = useState<number | null>(null);
   const [attractorOverride, setAttractorOverride] = useState<{
@@ -61,56 +61,131 @@ export default function App() {
     y: number;
     z: number;
   } | null>(null);
-  const sweepRafRef = useRef(0);
+  const [attractorBoost, setAttractorBoost] = useState<number | undefined>(
+    undefined,
+  );
+  const [teleportSignal, setTeleportSignal] = useState<{
+    x: number;
+    y: number;
+    z: number;
+    timestamp: number;
+  } | null>(null);
+  const animRafRef = useRef(0);
 
   const SWEEP_BOTTOM = -2.0;
   const SWEEP_TOP = 2.0;
   const SWEEP_DURATION_MS = 2500;
   const SWEEP_FADE_DURATION_MS = 1000;
 
+  const ENTER_EXIT_FAR_Y = -4.0;
+  const ENTER_EXIT_DURATION_MS = 2500;
+
   const handleTrigger = useCallback((trigger: TTriggerPhase) => {
-    if (trigger !== "sweep-up") return;
+    if (animRafRef.current) cancelAnimationFrame(animRafRef.current);
 
-    setTriggerPhase("sweep-up");
-    setSweepY(SWEEP_BOTTOM);
-    setAttractorOverride({ x: 0, y: SWEEP_BOTTOM, z: 0 });
+    if (trigger === "sweep-up") {
+      setTriggerPhase("sweep-up");
+      setSweepY(SWEEP_BOTTOM);
+      setAttractorOverride({ x: 0, y: SWEEP_BOTTOM, z: 0 });
+      setAttractorBoost(undefined);
 
-    const startTime = performance.now();
+      const startTime = performance.now();
 
-    function animate(now: number) {
-      const elapsed = now - startTime;
+      function animateSweep(now: number) {
+        const elapsed = now - startTime;
 
-      if (elapsed < SWEEP_DURATION_MS) {
-        const t = elapsed / SWEEP_DURATION_MS;
-        const eased = t * t * (3 - 2 * t);
-        const y = SWEEP_BOTTOM + (SWEEP_TOP - SWEEP_BOTTOM) * eased;
-        setSweepY(y);
-        setAttractorOverride({ x: 0, y, z: 0 });
-        sweepRafRef.current = requestAnimationFrame(animate);
-      } else {
-        const fadeElapsed = elapsed - SWEEP_DURATION_MS;
-
-        if (fadeElapsed < SWEEP_FADE_DURATION_MS) {
-          const fadeT = fadeElapsed / SWEEP_FADE_DURATION_MS;
-          const fadeEased = fadeT * fadeT;
-          const y = SWEEP_TOP + fadeEased * 1.0;
+        if (elapsed < SWEEP_DURATION_MS) {
+          const t = elapsed / SWEEP_DURATION_MS;
+          const eased = t * t * (3 - 2 * t);
+          const y = SWEEP_BOTTOM + (SWEEP_TOP - SWEEP_BOTTOM) * eased;
           setSweepY(y);
           setAttractorOverride({ x: 0, y, z: 0 });
-          sweepRafRef.current = requestAnimationFrame(animate);
+          animRafRef.current = requestAnimationFrame(animateSweep);
         } else {
-          setSweepY(null);
+          const fadeElapsed = elapsed - SWEEP_DURATION_MS;
+
+          if (fadeElapsed < SWEEP_FADE_DURATION_MS) {
+            const fadeT = fadeElapsed / SWEEP_FADE_DURATION_MS;
+            const fadeEased = fadeT * fadeT;
+            const y = SWEEP_TOP + fadeEased * 1.0;
+            setSweepY(y);
+            setAttractorOverride({ x: 0, y, z: 0 });
+            animRafRef.current = requestAnimationFrame(animateSweep);
+          } else {
+            setSweepY(null);
+            setAttractorOverride(null);
+            setTriggerPhase("idle");
+          }
+        }
+      }
+
+      animRafRef.current = requestAnimationFrame(animateSweep);
+      return;
+    }
+
+    if (trigger === "enter") {
+      setTriggerPhase("enter");
+      setSweepY(null);
+      setAttractorBoost(8);
+      setTeleportSignal({
+        x: 0,
+        y: ENTER_EXIT_FAR_Y,
+        z: 0,
+        timestamp: performance.now(),
+      });
+      setAttractorOverride({ x: 0, y: ENTER_EXIT_FAR_Y, z: 0 });
+
+      const startTime = performance.now();
+
+      function animateEnter(now: number) {
+        const elapsed = now - startTime;
+        if (elapsed < ENTER_EXIT_DURATION_MS) {
+          const t = elapsed / ENTER_EXIT_DURATION_MS;
+          const eased = t * t * (3 - 2 * t);
+          const y = ENTER_EXIT_FAR_Y + (0 - ENTER_EXIT_FAR_Y) * eased;
+          setAttractorOverride({ x: 0, y, z: 0 });
+          animRafRef.current = requestAnimationFrame(animateEnter);
+        } else {
           setAttractorOverride(null);
+          setAttractorBoost(undefined);
           setTriggerPhase("idle");
         }
       }
+
+      animRafRef.current = requestAnimationFrame(animateEnter);
+      return;
     }
 
-    sweepRafRef.current = requestAnimationFrame(animate);
+    if (trigger === "exit") {
+      setTriggerPhase("exit");
+      setSweepY(null);
+      setAttractorBoost(14);
+      setAttractorOverride({ x: 0, y: 0, z: 0 });
+
+      const startTime = performance.now();
+
+      function animateExit(now: number) {
+        const elapsed = now - startTime;
+        if (elapsed < ENTER_EXIT_DURATION_MS) {
+          const t = elapsed / ENTER_EXIT_DURATION_MS;
+          const eased = t * t * (3 - 2 * t);
+          const y = 0 + (ENTER_EXIT_FAR_Y - 0) * eased;
+          setAttractorOverride({ x: 0, y, z: 0 });
+          animRafRef.current = requestAnimationFrame(animateExit);
+        } else {
+          setAttractorOverride({ x: 0, y: ENTER_EXIT_FAR_Y, z: 0 });
+          setTriggerPhase("hidden");
+        }
+      }
+
+      animRafRef.current = requestAnimationFrame(animateExit);
+      return;
+    }
   }, []);
 
   useEffect(() => {
     return () => {
-      if (sweepRafRef.current) cancelAnimationFrame(sweepRafRef.current);
+      if (animRafRef.current) cancelAnimationFrame(animRafRef.current);
     };
   }, []);
 
@@ -175,7 +250,11 @@ export default function App() {
 
   return (
     <main aria-label="Particle workspace" className="viewport" tabIndex={-1}>
-      <ThemeToggle appearance={appearance} hidden={sidebarOpen} setAppearance={setAppearance} />
+      <ThemeToggle
+        appearance={appearance}
+        hidden={sidebarOpen}
+        setAppearance={setAppearance}
+      />
 
       <TriggerBar phase={triggerPhase} onTrigger={handleTrigger} />
 
@@ -198,10 +277,12 @@ export default function App() {
         >
           <Scene
             appearance={appearance}
+            attractorBoost={attractorBoost}
             attractorOverride={attractorOverride}
             geometry={geometry}
             settings={settings}
             sweepHighlightY={sweepY}
+            teleportSignal={teleportSignal}
           />
         </Canvas>
       ) : (

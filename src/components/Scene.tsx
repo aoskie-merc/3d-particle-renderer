@@ -22,6 +22,15 @@ export interface ISceneProps {
   pulseTimestamp?: number;
   /** When set, overrides the swarm attractor to this position (sweep trigger). */
   attractorOverride?: { x: number; y: number; z: number } | null;
+  /** Multiplier for attractor force when override is active. */
+  attractorBoost?: number;
+  /** When timestamp changes, teleport all boids to the given position. */
+  teleportSignal?: {
+    x: number;
+    y: number;
+    z: number;
+    timestamp: number;
+  } | null;
   /** Y-plane of the sweep highlight for skin particles; null = inactive. */
   sweepHighlightY?: number | null;
 }
@@ -93,6 +102,7 @@ export default function Scene(props: ISceneProps) {
 
       <ParticleSystem
         key={geometry.uuid}
+        attractorBoost={props.attractorBoost}
         attractorOverride={props.attractorOverride}
         blendMode={settings.blendMode}
         boidAlignment={settings.boidAlignment}
@@ -114,6 +124,7 @@ export default function Scene(props: ISceneProps) {
         swarmOrbitRadius={settings.swarmOrbitRadius}
         swarmSplitIntensity={settings.swarmSplitIntensity}
         swarmSplitSpeed={settings.swarmSplitSpeed}
+        teleportSignal={props.teleportSignal}
       />
     </>
   );

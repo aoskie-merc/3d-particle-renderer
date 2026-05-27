@@ -43,6 +43,15 @@ export interface IParticleSystemProps {
   pulseTimestamp?: number;
   /** When set, overrides the Lissajous attractor with a fixed position (used by sweep triggers). */
   attractorOverride?: { x: number; y: number; z: number } | null;
+  /** Multiplier for attractorFactor when attractorOverride is active. Defaults to 6. */
+  attractorBoost?: number;
+  /** When timestamp changes, teleport all boids to the given position with random scatter. */
+  teleportSignal?: {
+    x: number;
+    y: number;
+    z: number;
+    timestamp: number;
+  } | null;
 }
 
 const blendingForMode = (mode: TBlendModeKey) => {
@@ -80,7 +89,12 @@ export default function ParticleSystem(props: IParticleSystemProps) {
     swarmSplitSpeed,
   } = props;
 
-  const { attractorOverride = null, pulseTimestamp = 0 } = props;
+  const {
+    attractorOverride = null,
+    attractorBoost = 6,
+    pulseTimestamp = 0,
+    teleportSignal = null,
+  } = props;
 
   const meshRef = useRef<InstancedMesh>(null);
   const boidsRef = useRef<IBoidParticle[]>([]);
@@ -110,6 +124,25 @@ export default function ParticleSystem(props: IParticleSystemProps) {
     );
   }, [samples, count, surfaceNormalOffset]);
 
+  const lastTeleportRef = useRef(0);
+  useEffect(() => {
+    if (!teleportSignal || teleportSignal.timestamp === lastTeleportRef.current)
+      return;
+    lastTeleportRef.current = teleportSignal.timestamp;
+    const boids = boidsRef.current;
+    for (let i = 0; i < boids.length; i++) {
+      const b = boids[i];
+      const scatter = 1.5;
+      b.x = teleportSignal.x + (Math.random() - 0.5) * scatter;
+      b.y = teleportSignal.y + (Math.random() - 0.5) * scatter;
+      b.z = teleportSignal.z + (Math.random() - 0.5) * scatter;
+      const swirlSpeed = 0.008;
+      b.vx = (Math.random() - 0.5) * swirlSpeed;
+      b.vy = (Math.random() - 0.5) * swirlSpeed;
+      b.vz = (Math.random() - 0.5) * swirlSpeed;
+    }
+  }, [teleportSignal]);
+
   const boidParamsRef = useRef<IBoidParams>({ ...BOID_DEFAULTS });
 
   useEffect(() => {
@@ -120,7 +153,7 @@ export default function ParticleSystem(props: IParticleSystemProps) {
       alignmentFactor: boidAlignment,
       cohesionFactor: boidCohesion,
       attractorFactor: attractorOverride
-        ? BOID_DEFAULTS.attractorFactor * 6
+        ? BOID_DEFAULTS.attractorFactor * attractorBoost
         : BOID_DEFAULTS.attractorFactor,
       homeSpringFactor: attractorOverride ? 0 : boidHomeSpring,
       maxHomeDistance: BOID_DEFAULTS.maxHomeDistance,
@@ -137,6 +170,7 @@ export default function ParticleSystem(props: IParticleSystemProps) {
       attractorOverride,
     };
   }, [
+    attractorBoost,
     attractorOverride,
     boidAlignment,
     boidCohesion,
