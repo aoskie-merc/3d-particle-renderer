@@ -95,7 +95,7 @@ export const PARTICLE_SETTINGS_DEFAULTS: IParticleSettings = {
   swarmOrbitRadius: BOID_DEFAULTS.orbitRadius,
   swarmSplitIntensity: BOID_DEFAULTS.splitIntensity,
   swarmSplitSpeed: BOID_DEFAULTS.splitSpeed,
-  skinEnabled: false,
+  skinEnabled: true,
   skinParticleCount: 32_768,
   skinParticleSize: 0.028,
   skinDepthFade: 0.3,
