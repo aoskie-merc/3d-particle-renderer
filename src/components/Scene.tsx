@@ -1,18 +1,18 @@
-import { useMemo } from 'react';
+import { useMemo } from "react";
 
-import AdaptivePerspective from './AdaptivePerspective';
-import GhostMesh from './GhostMesh';
-import ParticleSystem from './ParticleSystem';
-import SkinParticleSystem from './SkinParticleSystem';
-import SpringOrbitControls from './SpringOrbitControls';
+import AdaptivePerspective from "./AdaptivePerspective";
+import GhostMesh from "./GhostMesh";
+import ParticleSystem from "./ParticleSystem";
+import SkinParticleSystem from "./SkinParticleSystem";
+import SpringOrbitControls from "./SpringOrbitControls";
 
-import type { BufferGeometry } from 'three';
+import type { BufferGeometry } from "three";
 
-import type { IParticleSettings } from '../particleSettings';
-import type { TMercuryAppearance } from '../theme';
-import { mercuryCanvasHex } from '../theme';
+import type { IParticleSettings } from "../particleSettings";
+import type { TMercuryAppearance } from "../theme";
+import { mercuryCanvasHex } from "../theme";
 
-import { CANONICAL_MESH_RADIUS } from '../utils/geometryNormalize';
+import { CANONICAL_MESH_RADIUS } from "../utils/geometryNormalize";
 
 export interface ISceneProps {
   appearance: TMercuryAppearance;
@@ -24,8 +24,8 @@ export default function Scene(props: ISceneProps) {
   const { appearance, geometry, settings } = props;
 
   const clears = mercuryCanvasHex(appearance);
-  const skyColor = appearance === 'dark' ? '#c3c3cc' : '#fbfcfd';
-  const groundColor = appearance === 'dark' ? '#171721' : '#dddde5';
+  const skyColor = appearance === "dark" ? "#c3c3cc" : "#fbfcfd";
+  const groundColor = appearance === "dark" ? "#171721" : "#dddde5";
 
   const fitRadius = useMemo(() => {
     geometry.computeBoundingSphere();
@@ -45,11 +45,17 @@ export default function Scene(props: ISceneProps) {
 
       <hemisphereLight args={[skyColor, groundColor, 0.48]} />
 
-      <ambientLight intensity={appearance === 'dark' ? 0.36 : 0.42} />
+      <ambientLight intensity={appearance === "dark" ? 0.36 : 0.42} />
 
-      <directionalLight intensity={appearance === 'dark' ? 2.08 : 1.78} position={[fitRadius * 12, fitRadius * 17, fitRadius * 9]} />
+      <directionalLight
+        intensity={appearance === "dark" ? 2.08 : 1.78}
+        position={[fitRadius * 12, fitRadius * 17, fitRadius * 9]}
+      />
 
-      <directionalLight intensity={appearance === 'dark' ? 2.15 : 1.85} position={[-fitRadius * 18, -fitRadius * 22, -fitRadius * 19]} />
+      <directionalLight
+        intensity={appearance === "dark" ? 2.15 : 1.85}
+        position={[-fitRadius * 18, -fitRadius * 22, -fitRadius * 19]}
+      />
 
       <SpringOrbitControls
         maxDistance={Math.max(fitRadius * 28, CANONICAL_MESH_RADIUS * 8)}
@@ -57,7 +63,11 @@ export default function Scene(props: ISceneProps) {
       />
 
       {!settings.skinEnabled && settings.showWireframe ? (
-        <GhostMesh appearance={appearance} geometry={geometry} wireOpacity={settings.wireOpacity} />
+        <GhostMesh
+          appearance={appearance}
+          geometry={geometry}
+          wireOpacity={settings.wireOpacity}
+        />
       ) : null}
 
       {settings.skinEnabled ? (
@@ -77,20 +87,24 @@ export default function Scene(props: ISceneProps) {
       <ParticleSystem
         key={geometry.uuid}
         blendMode={settings.blendMode}
+        boidAlignment={settings.boidAlignment}
+        boidCohesion={settings.boidCohesion}
+        boidHomeSpring={settings.boidHomeSpring}
+        boidNoise={settings.boidNoise}
+        boidSeparation={settings.boidSeparation}
+        boidSpeedLimit={settings.boidSpeedLimit}
+        boidVisualRange={settings.boidVisualRange}
         color={settings.color}
-        directionBias={settings.directionBias}
         distribution={settings.distribution}
         geometry={geometry}
-        movementAmplitude={settings.movementAmplitude}
-        movementSpeed={settings.movementSpeed}
         opacity={settings.opacity}
         particleCount={settings.particleCount}
         particleSize={settings.particleSize}
         surfaceNormalOffset={settings.surfaceNormalOffset}
-        vibrationAmplitude={settings.vibrationAmplitude}
-        vibrationDamping={settings.vibrationDamping}
-        vibrationFrequency={settings.vibrationFrequency}
-        vibrationNoiseScale={settings.vibrationNoiseScale}
+        swarmOrbitSpeed={settings.swarmOrbitSpeed}
+        swarmOrbitRadius={settings.swarmOrbitRadius}
+        swarmSplitIntensity={settings.swarmSplitIntensity}
+        swarmSplitSpeed={settings.swarmSplitSpeed}
       />
     </>
   );

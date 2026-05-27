@@ -191,9 +191,21 @@ export default function App() {
       ) : (
         <DropLanding
           appearance={appearance}
+          boidAlignment={settings.boidAlignment}
+          boidCohesion={settings.boidCohesion}
+          boidNoise={settings.boidNoise}
+          boidSeparation={settings.boidSeparation}
+          boidSpeedLimit={settings.boidSpeedLimit}
+          boidVisualRange={settings.boidVisualRange}
+          landingParticleCount={settings.landingParticleCount}
+          landingParticleSize={settings.landingParticleSize}
           loadError={loadError}
           panelBlur={settings.panelBlur}
           panelOpacity={settings.panelOpacity}
+          swarmOrbitSpeed={settings.swarmOrbitSpeed}
+          swarmOrbitRadius={settings.swarmOrbitRadius}
+          swarmSplitIntensity={settings.swarmSplitIntensity}
+          swarmSplitSpeed={settings.swarmSplitSpeed}
           onFileChosen={(file: File): void => {
             void applyFile(file);
           }}

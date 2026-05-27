@@ -10,14 +10,44 @@ import LandingParticles from './LandingParticles';
 
 export interface IDropLandingProps {
   appearance: TMercuryAppearance;
+  boidAlignment: number;
+  boidCohesion: number;
+  boidNoise: number;
+  boidSeparation: number;
+  boidSpeedLimit: number;
+  boidVisualRange: number;
+  landingParticleCount: number;
+  landingParticleSize: number;
   loadError: string | null;
   panelBlur: number;
   panelOpacity: number;
+  swarmOrbitSpeed: number;
+  swarmOrbitRadius: number;
+  swarmSplitIntensity: number;
+  swarmSplitSpeed: number;
   onFileChosen: (file: File) => void;
 }
 
 export default function DropLanding(props: IDropLandingProps) {
-  const { appearance, loadError, onFileChosen, panelBlur, panelOpacity } = props;
+  const {
+    appearance,
+    boidAlignment,
+    boidCohesion,
+    boidNoise,
+    boidSeparation,
+    boidSpeedLimit,
+    boidVisualRange,
+    landingParticleCount,
+    landingParticleSize,
+    loadError,
+    onFileChosen,
+    panelBlur,
+    panelOpacity,
+    swarmOrbitSpeed,
+    swarmOrbitRadius,
+    swarmSplitIntensity,
+    swarmSplitSpeed,
+  } = props;
   const panelRef = useRef<HTMLElement>(null);
   const inputRef = useRef<HTMLInputElement>(null);
   const [dragActive, setDragActive] = useState(false);
@@ -69,7 +99,22 @@ export default function DropLanding(props: IDropLandingProps) {
         }
       }}
     >
-      <LandingParticles anchorRef={panelRef} appearance={appearance} />
+      <LandingParticles
+        anchorRef={panelRef}
+        appearance={appearance}
+        boidAlignment={boidAlignment}
+        boidCohesion={boidCohesion}
+        boidNoise={boidNoise}
+        boidSeparation={boidSeparation}
+        boidSpeedLimit={boidSpeedLimit}
+        boidVisualRange={boidVisualRange}
+        landingParticleCount={landingParticleCount}
+        landingParticleSize={landingParticleSize}
+        swarmOrbitSpeed={swarmOrbitSpeed}
+        swarmOrbitRadius={swarmOrbitRadius}
+        swarmSplitIntensity={swarmSplitIntensity}
+        swarmSplitSpeed={swarmSplitSpeed}
+      />
 
       <section className={styles.panel} ref={panelRef} style={{ '--panel-opacity': panelOpacity, '--panel-blur': `${panelBlur}px` } as CSSProperties}>
         <svg className={styles.icon} xmlns="http://www.w3.org/2000/svg" width="64" height="64" fill="currentColor" viewBox="0 0 32 32" aria-hidden>
