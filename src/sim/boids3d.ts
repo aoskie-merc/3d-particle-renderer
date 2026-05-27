@@ -258,17 +258,17 @@ export function stepBoids(
   const t = elapsed * orbitSpeed;
   const r = orbitRadius;
   const attractX =
-    Math.sin(t * 0.07) * 0.6 * r +
-    Math.sin(t * 0.03 + 2.1) * 0.3 * r +
-    Math.sin(t * 0.17 + 0.8) * 0.1 * r;
+    Math.sin(t * 0.14) * 0.6 * r +
+    Math.sin(t * 0.07 + 2.1) * 0.3 * r +
+    Math.sin(t * 0.23 + 0.8) * 0.1 * r;
   const attractY =
-    Math.cos(t * 0.05) * 0.5 * r +
-    Math.sin(t * 0.025 + 1.3) * 0.25 * r +
-    Math.cos(t * 0.13 + 1.7) * 0.08 * r;
+    Math.cos(t * 0.11) * 0.5 * r +
+    Math.sin(t * 0.06 + 1.3) * 0.25 * r +
+    Math.cos(t * 0.19 + 1.7) * 0.08 * r;
   const attractZ =
-    Math.sin(t * 0.06 + 1.0) * 0.55 * r +
-    Math.cos(t * 0.035 + 0.5) * 0.28 * r +
-    Math.sin(t * 0.15 + 2.5) * 0.09 * r;
+    Math.sin(t * 0.13 + 1.0) * 0.55 * r +
+    Math.cos(t * 0.08 + 0.5) * 0.28 * r +
+    Math.sin(t * 0.21 + 2.5) * 0.09 * r;
 
   // --- Split pulse along flock heading perpendicular ---
   // 3 overlapping frequencies with power-8 for wider sustained peaks (matches 2D prototype)
