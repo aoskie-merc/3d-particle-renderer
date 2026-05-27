@@ -74,8 +74,53 @@
     0 0 0 3px var(--app-ds-focus-ring-outer);
 }
 
+/* ─── Duration select ─── */
+
+.durationLabel {
+  margin: 4px 0 0;
+  font-size: 0.688rem;
+  font-weight: 600;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--app-text-muted);
+  line-height: 1;
+}
+
+.durationSelect {
+  appearance: none;
+  width: 100%;
+  padding: 6px 10px;
+  border: 1px solid var(--app-ds-btn-secondary-bg-hover);
+  border-radius: 8px;
+  background-color: var(--app-ds-btn-secondary-bg);
+  color: var(--app-ds-btn-secondary-text);
+  font-family: inherit;
+  font-size: 0.813rem;
+  font-weight: 600;
+  cursor: pointer;
+  background-image: url("data:image/svg+xml,%3Csvg width='10' height='6' viewBox='0 0 10 6' fill='none' xmlns='http://www.w3.org/2000/svg'%3E%3Cpath d='M1 1l4 4 4-4' stroke='%23999' stroke-width='1.5' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E");
+  background-repeat: no-repeat;
+  background-position: right 10px center;
+  background-size: 10px 6px;
+  transition:
+    background-color 0.2s ease,
+    border-color 0.2s ease;
+}
+
+.durationSelect:hover {
+  background-color: var(--app-ds-btn-secondary-bg-hover);
+}
+
+.durationSelect:focus-visible {
+  outline: none;
+  box-shadow:
+    0 0 0 1px var(--app-ds-focus-ring-inner),
+    0 0 0 3px var(--app-ds-focus-ring-outer);
+}
+
 @media (prefers-reduced-motion: reduce) {
-  .dsBtn {
+  .dsBtn,
+  .durationSelect {
     transition: none;
   }
 }
