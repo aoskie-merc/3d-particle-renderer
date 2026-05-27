@@ -210,7 +210,6 @@ export default function App() {
 
       <SettingsChrome
         panelOpen={sidebarOpen}
-        particleControlsEnabled={geometry !== null}
         resetToDefault={resetToDefault}
         saveAsDefault={saveAsDefault}
         setPanelOpen={setSidebarOpen}

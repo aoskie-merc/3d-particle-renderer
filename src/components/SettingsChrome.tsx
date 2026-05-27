@@ -15,12 +15,6 @@ import { faSliders } from "@fortawesome/free-solid-svg-icons";
 
 import type { IParticleSettings } from "../particleSettings";
 
-import type {
-  TBlendModeKey,
-  TDirectionBias,
-  TDistributionMethod,
-} from "../types";
-
 import { PARTICLE_CAPACITY } from "../utils/surfaceSampler";
 import { snapParticleCountForUi } from "../utils/particleCountUi";
 import {
@@ -31,21 +25,13 @@ import {
 interface IProps {
   onPatch: (patch: Partial<IParticleSettings>) => void;
   panelOpen: boolean;
-  particleControlsEnabled: boolean;
   resetToDefault: () => void;
   saveAsDefault: () => void;
   setPanelOpen: Dispatch<SetStateAction<boolean>>;
   settings: IParticleSettings;
 }
 
-type TSectionKey =
-  | "floatingParticles"
-  | "flowMotion"
-  | "pulseVibration"
-  | "swarm"
-  | "swarmMotion"
-  | "modelSkin"
-  | "display";
+type TSectionKey = "particles" | "swarm" | "modelSkin";
 
 function Section(
   props: Readonly<{
@@ -254,7 +240,6 @@ export default function SettingsChrome(props: Readonly<IProps>): ReactElement {
   const {
     onPatch,
     panelOpen: open,
-    particleControlsEnabled,
     resetToDefault,
     saveAsDefault,
     setPanelOpen: setOpen,
@@ -265,13 +250,9 @@ export default function SettingsChrome(props: Readonly<IProps>): ReactElement {
   const [savePrimaryLabel, setSavePrimaryLabel] = useState("Save as default");
 
   const [expanded, setExpanded] = useState<Record<TSectionKey, boolean>>({
-    floatingParticles: true,
-    flowMotion: true,
-    pulseVibration: true,
+    particles: true,
     swarm: true,
-    swarmMotion: true,
     modelSkin: true,
-    display: true,
   });
 
   const toggle = useCallback((key: TSectionKey) => {
@@ -343,673 +324,256 @@ export default function SettingsChrome(props: Readonly<IProps>): ReactElement {
         </header>
 
         <div className={styles.sheetBody}>
-          {particleControlsEnabled ? (
-            <>
-              <Section
-                title="Floating Particles"
-                expanded={expanded.floatingParticles}
-                onToggle={() => toggle("floatingParticles")}
-              >
-                <Slider
-                  label="Density"
-                  max={PARTICLE_CAPACITY}
-                  min={1024}
-                  roundDisplay
-                  step={512}
-                  value={settings.particleCount}
-                  onChange={(next: number) => {
-                    onPatch({ particleCount: snapParticleCountForUi(next) });
-                  }}
-                />
+          <Section
+            title="Particles"
+            expanded={expanded.particles}
+            onToggle={() => toggle("particles")}
+          >
+            <Slider
+              label="Density"
+              max={PARTICLE_CAPACITY}
+              min={1024}
+              roundDisplay
+              step={512}
+              value={settings.particleCount}
+              onChange={(next: number) => {
+                onPatch({ particleCount: snapParticleCountForUi(next) });
+              }}
+            />
 
-                <Slider
-                  label="Dot size"
-                  max={0.16}
-                  min={0.002}
-                  step={0.0005}
-                  value={settings.particleSize}
-                  onChange={(next: number) => {
-                    onPatch({ particleSize: next });
-                  }}
-                />
+            <Slider
+              label="Dot size"
+              max={0.16}
+              min={0.002}
+              step={0.0005}
+              value={settings.particleSize}
+              onChange={(next: number) => {
+                onPatch({ particleSize: next });
+              }}
+            />
 
-                <Slider
-                  label="Float distance"
-                  max={0.85}
-                  min={-0.35}
-                  step={0.001}
-                  value={settings.surfaceNormalOffset}
-                  onChange={(next: number) => {
-                    onPatch({ surfaceNormalOffset: next });
-                  }}
-                />
+            <Slider
+              label="Float distance"
+              max={0.85}
+              min={-0.35}
+              step={0.001}
+              value={settings.surfaceNormalOffset}
+              onChange={(next: number) => {
+                onPatch({ surfaceNormalOffset: next });
+              }}
+            />
 
-                <label className={styles.selectRow}>
-                  <span className={styles.label}>Distribution method</span>
-                  <select
-                    className={styles.select}
-                    value={settings.distribution}
-                    onChange={(event: ChangeEvent<HTMLSelectElement>) => {
-                      const next = event.target.value as TDistributionMethod;
+            <Slider
+              label="Opacity"
+              max={1}
+              min={0.05}
+              step={0.01}
+              value={settings.opacity}
+              onChange={(next: number) => {
+                onPatch({ opacity: next });
+              }}
+            />
 
-                      if (
-                        next === "areaWeighted" ||
-                        next === "triangleUniform"
-                      ) {
-                        onPatch({ distribution: next });
-                      }
-                    }}
-                  >
-                    <option value="areaWeighted">Area weighted</option>
-                    <option value="triangleUniform">Uniform random</option>
-                  </select>
-                </label>
+            <ColorPicker
+              label="Color"
+              value={settings.color}
+              onChange={(next: string) => {
+                onPatch({ color: next });
+              }}
+            />
 
-                <Slider
-                  label="Opacity"
-                  max={1}
-                  min={0.05}
-                  step={0.01}
-                  value={settings.opacity}
-                  onChange={(next: number) => {
-                    onPatch({ opacity: next });
-                  }}
-                />
+            <Slider
+              label="Flow speed"
+              max={4}
+              min={0.1}
+              step={0.01}
+              value={settings.movementSpeed}
+              onChange={(next: number) => {
+                onPatch({ movementSpeed: next });
+              }}
+            />
 
-                <ColorPicker
-                  label="Color"
-                  value={settings.color}
-                  onChange={(next: string) => {
-                    onPatch({ color: next });
-                  }}
-                />
+            <Slider
+              label="Flow intensity"
+              max={1.35}
+              min={0}
+              step={0.01}
+              value={settings.movementAmplitude}
+              onChange={(next: number) => {
+                onPatch({ movementAmplitude: next });
+              }}
+            />
+          </Section>
 
-                <label className={styles.selectRow}>
-                  <span className={styles.label}>Blend mode</span>
-                  <select
-                    className={styles.select}
-                    value={settings.blendMode}
-                    onChange={(event: ChangeEvent<HTMLSelectElement>) => {
-                      const next = event.target.value as TBlendModeKey;
+          <Section
+            title="Swarm"
+            expanded={expanded.swarm}
+            onToggle={() => toggle("swarm")}
+          >
+            <Slider
+              label="Max speed"
+              max={0.1}
+              min={0.005}
+              step={0.001}
+              value={settings.boidSpeedLimit}
+              onChange={(next: number) => {
+                onPatch({ boidSpeedLimit: next });
+              }}
+            />
 
-                      if (
-                        next === "normal" ||
-                        next === "additive" ||
-                        next === "multiply"
-                      ) {
-                        onPatch({ blendMode: next });
-                      }
-                    }}
-                  >
-                    <option value="normal">Normal</option>
-                    <option value="additive">Additive glow</option>
-                    <option value="multiply">Multiply</option>
-                  </select>
-                </label>
-              </Section>
+            <Slider
+              label="Orbit speed"
+              max={5}
+              min={0.1}
+              step={0.05}
+              value={settings.swarmOrbitSpeed}
+              onChange={(next: number) => {
+                onPatch({ swarmOrbitSpeed: next });
+              }}
+            />
 
-              <Section
-                title="Flow & Motion"
-                expanded={expanded.flowMotion}
-                onToggle={() => toggle("flowMotion")}
-              >
-                <Slider
-                  label="Flow speed"
-                  max={4}
-                  min={0.1}
-                  step={0.01}
-                  value={settings.movementSpeed}
-                  onChange={(next: number) => {
-                    onPatch({ movementSpeed: next });
-                  }}
-                />
+            <Slider
+              label="Orbit radius"
+              max={6}
+              min={0.5}
+              step={0.1}
+              value={settings.swarmOrbitRadius}
+              onChange={(next: number) => {
+                onPatch({ swarmOrbitRadius: next });
+              }}
+            />
 
-                <Slider
-                  label="Flow intensity"
-                  max={1.35}
-                  min={0}
-                  step={0.01}
-                  value={settings.movementAmplitude}
-                  onChange={(next: number) => {
-                    onPatch({ movementAmplitude: next });
-                  }}
-                />
+            <Slider
+              label="Split intensity"
+              max={1}
+              min={0}
+              step={0.01}
+              value={settings.swarmSplitIntensity}
+              onChange={(next: number) => {
+                onPatch({ swarmSplitIntensity: next });
+              }}
+            />
 
-                <label className={styles.selectRow}>
-                  <span className={styles.label}>Flow direction</span>
-                  <select
-                    className={styles.select}
-                    value={settings.directionBias}
-                    onChange={(event: ChangeEvent<HTMLSelectElement>) => {
-                      const next = event.target.value as TDirectionBias;
+            <Slider
+              label="Split speed"
+              max={5}
+              min={0.1}
+              step={0.05}
+              value={settings.swarmSplitSpeed}
+              onChange={(next: number) => {
+                onPatch({ swarmSplitSpeed: next });
+              }}
+            />
 
-                      if (
-                        next === "radial" ||
-                        next === "tangential" ||
-                        next === "random"
-                      ) {
-                        onPatch({ directionBias: next });
-                      }
-                    }}
-                  >
-                    <option value="radial">Radial</option>
-                    <option value="tangential">Tangential</option>
-                    <option value="random">Random</option>
-                  </select>
-                </label>
-              </Section>
+            <Slider
+              label="Surface gravity"
+              max={0.003}
+              min={0}
+              step={0.0001}
+              value={settings.boidHomeSpring}
+              onChange={(next: number) => {
+                onPatch({ boidHomeSpring: next });
+              }}
+            />
+          </Section>
 
-              <Section
-                title="Pulse & Vibration"
-                expanded={expanded.pulseVibration}
-                onToggle={() => toggle("pulseVibration")}
-              >
-                <Slider
-                  label="Pulse speed"
-                  max={4.35}
-                  min={0.1}
-                  step={0.01}
-                  value={settings.vibrationFrequency}
-                  onChange={(next: number) => {
-                    onPatch({ vibrationFrequency: next });
-                  }}
-                />
+          <Section
+            title="Model Skin"
+            expanded={expanded.modelSkin}
+            onToggle={() => toggle("modelSkin")}
+          >
+            <Checkbox
+              label="Enable skin"
+              checked={settings.skinEnabled}
+              onChange={(checked: boolean) => {
+                onPatch({ skinEnabled: checked });
+              }}
+            />
 
-                <Slider
-                  label="Pulse intensity"
-                  max={0.85}
-                  min={0}
-                  step={0.005}
-                  value={settings.vibrationAmplitude}
-                  onChange={(next: number) => {
-                    onPatch({ vibrationAmplitude: next });
-                  }}
-                />
+            <Slider
+              disabled={!settings.skinEnabled}
+              label="Skin density"
+              max={SKIN_PARTICLE_CAPACITY}
+              min={5000}
+              roundDisplay
+              step={256}
+              value={settings.skinParticleCount}
+              onChange={(next: number) => {
+                onPatch({
+                  skinParticleCount: snapSkinParticleCountForUi(next),
+                });
+              }}
+            />
 
-                <Slider
-                  label="Pulse decay"
-                  max={6}
-                  min={0}
-                  step={0.05}
-                  value={settings.vibrationDamping}
-                  onChange={(next: number) => {
-                    onPatch({ vibrationDamping: next });
-                  }}
-                />
+            <Slider
+              disabled={!settings.skinEnabled}
+              label="Skin dot size"
+              max={0.05}
+              min={0.001}
+              step={0.0005}
+              value={settings.skinParticleSize}
+              onChange={(next: number) => {
+                onPatch({ skinParticleSize: next });
+              }}
+            />
 
-                <Slider
-                  label="Organic noise"
-                  max={2.95}
-                  min={0}
-                  step={0.02}
-                  value={settings.vibrationNoiseScale}
-                  onChange={(next: number) => {
-                    onPatch({ vibrationNoiseScale: next });
-                  }}
-                />
-              </Section>
+            <Slider
+              disabled={!settings.skinEnabled}
+              label="Lighting"
+              max={1}
+              min={0}
+              step={0.01}
+              value={settings.skinNormalShading}
+              onChange={(next: number) => {
+                onPatch({ skinNormalShading: next });
+              }}
+            />
 
-              <Section
-                title="Swarm"
-                expanded={expanded.swarm}
-                onToggle={() => toggle("swarm")}
-              >
-                <Slider
-                  label="Awareness radius"
-                  max={0.5}
-                  min={0.05}
-                  step={0.005}
-                  value={settings.boidVisualRange}
-                  onChange={(next: number) => {
-                    onPatch({ boidVisualRange: next });
-                  }}
-                />
+            <Slider
+              disabled={!settings.skinEnabled}
+              label="Depth fade"
+              max={1}
+              min={0}
+              step={0.01}
+              value={settings.skinDepthFade}
+              onChange={(next: number) => {
+                onPatch({ skinDepthFade: next });
+              }}
+            />
 
-                <Slider
-                  label="Personal space"
-                  max={0.2}
-                  min={0}
-                  step={0.001}
-                  value={settings.boidSeparation}
-                  onChange={(next: number) => {
-                    onPatch({ boidSeparation: next });
-                  }}
-                />
+            <Slider
+              disabled={!settings.skinEnabled}
+              label="Edge emphasis"
+              max={1}
+              min={0}
+              step={0.01}
+              value={settings.skinContourDensity}
+              onChange={(next: number) => {
+                onPatch({ skinContourDensity: next });
+              }}
+            />
 
-                <Slider
-                  label="Flock alignment"
-                  max={0.2}
-                  min={0}
-                  step={0.001}
-                  value={settings.boidAlignment}
-                  onChange={(next: number) => {
-                    onPatch({ boidAlignment: next });
-                  }}
-                />
+            <ColorPicker
+              disabled={!settings.skinEnabled}
+              label="Skin color"
+              value={settings.skinColor}
+              onChange={(next: string) => {
+                onPatch({ skinColor: next });
+              }}
+            />
 
-                <Slider
-                  label="Flock cohesion"
-                  max={0.003}
-                  min={0}
-                  step={0.0001}
-                  value={settings.boidCohesion}
-                  onChange={(next: number) => {
-                    onPatch({ boidCohesion: next });
-                  }}
-                />
-
-                <Slider
-                  label="Surface gravity"
-                  max={0.003}
-                  min={0}
-                  step={0.0001}
-                  value={settings.boidHomeSpring}
-                  onChange={(next: number) => {
-                    onPatch({ boidHomeSpring: next });
-                  }}
-                />
-
-                <Slider
-                  label="Max speed"
-                  max={0.1}
-                  min={0.005}
-                  step={0.001}
-                  value={settings.boidSpeedLimit}
-                  onChange={(next: number) => {
-                    onPatch({ boidSpeedLimit: next });
-                  }}
-                />
-
-                <Slider
-                  label="Randomness"
-                  max={0.01}
-                  min={0}
-                  step={0.0002}
-                  value={settings.boidNoise}
-                  onChange={(next: number) => {
-                    onPatch({ boidNoise: next });
-                  }}
-                />
-              </Section>
-
-              <Section
-                title="Swarm Motion"
-                expanded={expanded.swarmMotion}
-                onToggle={() => toggle("swarmMotion")}
-              >
-                <Slider
-                  label="Orbit speed"
-                  max={5}
-                  min={0.1}
-                  step={0.05}
-                  value={settings.swarmOrbitSpeed}
-                  onChange={(next: number) => {
-                    onPatch({ swarmOrbitSpeed: next });
-                  }}
-                />
-
-                <Slider
-                  label="Orbit radius"
-                  max={6}
-                  min={0.5}
-                  step={0.1}
-                  value={settings.swarmOrbitRadius}
-                  onChange={(next: number) => {
-                    onPatch({ swarmOrbitRadius: next });
-                  }}
-                />
-
-                <Slider
-                  label="Split intensity"
-                  max={1}
-                  min={0}
-                  step={0.01}
-                  value={settings.swarmSplitIntensity}
-                  onChange={(next: number) => {
-                    onPatch({ swarmSplitIntensity: next });
-                  }}
-                />
-
-                <Slider
-                  label="Split speed"
-                  max={5}
-                  min={0.1}
-                  step={0.05}
-                  value={settings.swarmSplitSpeed}
-                  onChange={(next: number) => {
-                    onPatch({ swarmSplitSpeed: next });
-                  }}
-                />
-              </Section>
-
-              <Section
-                title="Model Skin"
-                expanded={expanded.modelSkin}
-                onToggle={() => toggle("modelSkin")}
-              >
-                <Checkbox
-                  label="Enable skin"
-                  checked={settings.skinEnabled}
-                  onChange={(checked: boolean) => {
-                    onPatch({ skinEnabled: checked });
-                  }}
-                />
-
-                <Slider
-                  disabled={!settings.skinEnabled}
-                  label="Skin density"
-                  max={SKIN_PARTICLE_CAPACITY}
-                  min={5000}
-                  roundDisplay
-                  step={256}
-                  value={settings.skinParticleCount}
-                  onChange={(next: number) => {
-                    onPatch({
-                      skinParticleCount: snapSkinParticleCountForUi(next),
-                    });
-                  }}
-                />
-
-                <Slider
-                  disabled={!settings.skinEnabled}
-                  label="Skin dot size"
-                  max={0.05}
-                  min={0.001}
-                  step={0.0005}
-                  value={settings.skinParticleSize}
-                  onChange={(next: number) => {
-                    onPatch({ skinParticleSize: next });
-                  }}
-                />
-
-                <Slider
-                  disabled={!settings.skinEnabled}
-                  label="Lighting"
-                  max={1}
-                  min={0}
-                  step={0.01}
-                  value={settings.skinNormalShading}
-                  onChange={(next: number) => {
-                    onPatch({ skinNormalShading: next });
-                  }}
-                />
-
-                <Slider
-                  disabled={!settings.skinEnabled}
-                  label="Depth fade"
-                  max={1}
-                  min={0}
-                  step={0.01}
-                  value={settings.skinDepthFade}
-                  onChange={(next: number) => {
-                    onPatch({ skinDepthFade: next });
-                  }}
-                />
-
-                <Slider
-                  disabled={!settings.skinEnabled}
-                  label="Edge emphasis"
-                  max={1}
-                  min={0}
-                  step={0.01}
-                  value={settings.skinContourDensity}
-                  onChange={(next: number) => {
-                    onPatch({ skinContourDensity: next });
-                  }}
-                />
-
-                <ColorPicker
-                  disabled={!settings.skinEnabled}
-                  label="Skin color"
-                  value={settings.skinColor}
-                  onChange={(next: string) => {
-                    onPatch({ skinColor: next });
-                  }}
-                />
-
-                <Slider
-                  disabled={!settings.skinEnabled}
-                  label="Skin opacity"
-                  max={1}
-                  min={0}
-                  step={0.01}
-                  value={settings.skinOpacity}
-                  onChange={(next: number) => {
-                    onPatch({ skinOpacity: next });
-                  }}
-                />
-              </Section>
-
-              <Section
-                title="Display"
-                expanded={expanded.display}
-                onToggle={() => toggle("display")}
-              >
-                <Checkbox
-                  label="Show wireframe"
-                  checked={settings.showWireframe}
-                  disabled={settings.skinEnabled}
-                  onChange={(checked: boolean) => {
-                    onPatch({ showWireframe: checked });
-                  }}
-                />
-
-                <Slider
-                  disabled={!settings.showWireframe || settings.skinEnabled}
-                  label="Wire opacity"
-                  max={0.6}
-                  min={0.02}
-                  step={0.01}
-                  value={settings.wireOpacity}
-                  onChange={(next: number) => {
-                    onPatch({ wireOpacity: next });
-                  }}
-                />
-
-                <Slider
-                  label="Panel transparency"
-                  max={1}
-                  min={0}
-                  step={0.01}
-                  value={settings.panelOpacity}
-                  onChange={(next: number): void => {
-                    onPatch({ panelOpacity: next });
-                  }}
-                />
-
-                <Slider
-                  label="Panel blur"
-                  max={20}
-                  min={0}
-                  roundDisplay
-                  step={1}
-                  suffix="px"
-                  value={settings.panelBlur}
-                  onChange={(next: number): void => {
-                    onPatch({ panelBlur: Math.round(next) });
-                  }}
-                />
-              </Section>
-            </>
-          ) : (
-            <>
-              <Section
-                title="Swarm"
-                expanded={expanded.swarm}
-                onToggle={() => toggle("swarm")}
-              >
-                <Slider
-                  label="Awareness radius"
-                  max={0.5}
-                  min={0.05}
-                  step={0.005}
-                  value={settings.boidVisualRange}
-                  onChange={(next: number) => {
-                    onPatch({ boidVisualRange: next });
-                  }}
-                />
-
-                <Slider
-                  label="Personal space"
-                  max={0.2}
-                  min={0}
-                  step={0.001}
-                  value={settings.boidSeparation}
-                  onChange={(next: number) => {
-                    onPatch({ boidSeparation: next });
-                  }}
-                />
-
-                <Slider
-                  label="Flock alignment"
-                  max={0.2}
-                  min={0}
-                  step={0.001}
-                  value={settings.boidAlignment}
-                  onChange={(next: number) => {
-                    onPatch({ boidAlignment: next });
-                  }}
-                />
-
-                <Slider
-                  label="Flock cohesion"
-                  max={0.003}
-                  min={0}
-                  step={0.0001}
-                  value={settings.boidCohesion}
-                  onChange={(next: number) => {
-                    onPatch({ boidCohesion: next });
-                  }}
-                />
-
-                <Slider
-                  label="Max speed"
-                  max={0.1}
-                  min={0.005}
-                  step={0.001}
-                  value={settings.boidSpeedLimit}
-                  onChange={(next: number) => {
-                    onPatch({ boidSpeedLimit: next });
-                  }}
-                />
-
-                <Slider
-                  label="Randomness"
-                  max={0.01}
-                  min={0}
-                  step={0.0002}
-                  value={settings.boidNoise}
-                  onChange={(next: number) => {
-                    onPatch({ boidNoise: next });
-                  }}
-                />
-              </Section>
-
-              <Section
-                title="Swarm Motion"
-                expanded={expanded.swarmMotion}
-                onToggle={() => toggle("swarmMotion")}
-              >
-                <Slider
-                  label="Orbit speed"
-                  max={5}
-                  min={0.1}
-                  step={0.05}
-                  value={settings.swarmOrbitSpeed}
-                  onChange={(next: number) => {
-                    onPatch({ swarmOrbitSpeed: next });
-                  }}
-                />
-
-                <Slider
-                  label="Orbit radius"
-                  max={6}
-                  min={0.5}
-                  step={0.1}
-                  value={settings.swarmOrbitRadius}
-                  onChange={(next: number) => {
-                    onPatch({ swarmOrbitRadius: next });
-                  }}
-                />
-
-                <Slider
-                  label="Split intensity"
-                  max={1}
-                  min={0}
-                  step={0.01}
-                  value={settings.swarmSplitIntensity}
-                  onChange={(next: number) => {
-                    onPatch({ swarmSplitIntensity: next });
-                  }}
-                />
-
-                <Slider
-                  label="Split speed"
-                  max={5}
-                  min={0.1}
-                  step={0.05}
-                  value={settings.swarmSplitSpeed}
-                  onChange={(next: number) => {
-                    onPatch({ swarmSplitSpeed: next });
-                  }}
-                />
-              </Section>
-
-              <Section
-                title="Display"
-                expanded={expanded.display}
-                onToggle={() => toggle("display")}
-              >
-                <Slider
-                  label="Particle count"
-                  max={600}
-                  min={120}
-                  roundDisplay
-                  step={10}
-                  value={settings.landingParticleCount}
-                  onChange={(next: number): void => {
-                    onPatch({ landingParticleCount: Math.round(next) });
-                  }}
-                />
-
-                <Slider
-                  label="Particle size"
-                  max={6}
-                  min={1}
-                  step={0.5}
-                  suffix="px"
-                  value={settings.landingParticleSize}
-                  onChange={(next: number): void => {
-                    onPatch({ landingParticleSize: next });
-                  }}
-                />
-
-                <Slider
-                  label="Panel transparency"
-                  max={1}
-                  min={0}
-                  step={0.01}
-                  value={settings.panelOpacity}
-                  onChange={(next: number): void => {
-                    onPatch({ panelOpacity: next });
-                  }}
-                />
-
-                <Slider
-                  label="Panel blur"
-                  max={20}
-                  min={0}
-                  roundDisplay
-                  step={1}
-                  suffix="px"
-                  value={settings.panelBlur}
-                  onChange={(next: number): void => {
-                    onPatch({ panelBlur: Math.round(next) });
-                  }}
-                />
-              </Section>
-            </>
-          )}
+            <Slider
+              disabled={!settings.skinEnabled}
+              label="Skin opacity"
+              max={1}
+              min={0}
+              step={0.01}
+              value={settings.skinOpacity}
+              onChange={(next: number) => {
+                onPatch({ skinOpacity: next });
+              }}
+            />
+          </Section>
         </div>
 
         <footer className={styles.sheetFooter}>
