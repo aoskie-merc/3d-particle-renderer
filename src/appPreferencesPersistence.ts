@@ -33,11 +33,10 @@ let persistTimer: ReturnType<typeof setTimeout> | undefined;
 export function syncThemeDatasetFromStoredTheme(): void {
   try {
     const raw = window.localStorage.getItem(STORAGE_KEY_THEME);
-    if (raw === "light" || raw === "dark") {
-      document.documentElement.dataset.theme = raw;
-    }
+    document.documentElement.dataset.theme =
+      raw === "light" || raw === "dark" ? raw : "dark";
   } catch {
-    /* quota / blocked */
+    document.documentElement.dataset.theme = "dark";
   }
 }
 

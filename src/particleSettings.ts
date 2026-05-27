@@ -72,7 +72,7 @@ export const PARTICLE_SETTINGS_DEFAULTS: IParticleSettings = {
   movementSpeed: 0.94,
   panelBlur: 12,
   panelOpacity: 0.7,
-  opacity: 0.9,
+  opacity: 0.5,
   particleCount: 2_000,
   particleSize: 0.003,
   showWireframe: false,
@@ -102,5 +102,5 @@ export const PARTICLE_SETTINGS_DEFAULTS: IParticleSettings = {
   skinNormalShading: 0.5,
   skinContourDensity: 0.45,
   skinColor: DEFAULT_PARTICLE_COLOR_ON_DARK_CANVAS,
-  skinOpacity: 0.92,
+  skinOpacity: 0.5,
 };
