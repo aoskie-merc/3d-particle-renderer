@@ -39,6 +39,8 @@ export interface IParticleSystemProps {
   swarmOrbitRadius: number;
   swarmSplitIntensity: number;
   swarmSplitSpeed: number;
+  /** External pulse timestamp — triggers an extra split burst (e.g. verification check complete) */
+  pulseTimestamp?: number;
 }
 
 const blendingForMode = (mode: TBlendModeKey) => {
@@ -76,10 +78,19 @@ export default function ParticleSystem(props: IParticleSystemProps) {
     swarmSplitSpeed,
   } = props;
 
+  const { pulseTimestamp = 0 } = props;
+
   const meshRef = useRef<InstancedMesh>(null);
   const boidsRef = useRef<IBoidParticle[]>([]);
   const sizeRef = useRef(particleSize);
   sizeRef.current = particleSize;
+
+  const pulseIntensityRef = useRef(0);
+  const lastPulseRef = useRef(0);
+  if (pulseTimestamp !== lastPulseRef.current && pulseTimestamp > 0) {
+    pulseIntensityRef.current = 1;
+    lastPulseRef.current = pulseTimestamp;
+  }
 
   const samples = useMemo(
     () => sampleMeshSurface(geometry, particleCount, distribution),
@@ -212,7 +223,16 @@ export default function ParticleSystem(props: IParticleSystemProps) {
       return;
     }
 
-    stepBoids(boids, boidParamsRef.current, state.clock.elapsedTime);
+    // Decay external pulse and temporarily boost split intensity
+    const pulse = pulseIntensityRef.current;
+    if (pulse > 0.01) {
+      pulseIntensityRef.current *= 0.97;
+      const params = boidParamsRef.current;
+      const boosted = { ...params, splitIntensity: params.splitIntensity + pulse * 0.5 };
+      stepBoids(boids, boosted, state.clock.elapsedTime);
+    } else {
+      stepBoids(boids, boidParamsRef.current, state.clock.elapsedTime);
+    }
 
     const arr = mesh.instanceMatrix.array as Float32Array;
     const s = sizeRef.current;

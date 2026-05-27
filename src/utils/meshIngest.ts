@@ -58,3 +58,17 @@ export async function ingestMeshFile(file: File): Promise<BufferGeometry> {
   geom.computeBoundingSphere();
   return geom;
 }
+
+/**
+ * Fetches a static STL from a public URL and returns centered geometry.
+ */
+export async function loadStaticModel(url: string): Promise<BufferGeometry> {
+  const response = await fetch(url);
+  const buf = await response.arrayBuffer();
+  const geom = new STLLoader().parse(buf);
+  geom.computeBoundingBox();
+  centerBufferGeometry(geom);
+  normalizeBoundingRadius(geom);
+  geom.computeBoundingSphere();
+  return geom;
+}

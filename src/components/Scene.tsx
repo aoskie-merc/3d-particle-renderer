@@ -18,6 +18,8 @@ export interface ISceneProps {
   appearance: TMercuryAppearance;
   geometry: BufferGeometry;
   settings: IParticleSettings;
+  /** External pulse timestamp — triggers swarm burst on verification check completion */
+  pulseTimestamp?: number;
 }
 
 export default function Scene(props: ISceneProps) {
@@ -100,6 +102,7 @@ export default function Scene(props: ISceneProps) {
         opacity={settings.opacity}
         particleCount={settings.particleCount}
         particleSize={settings.particleSize}
+        pulseTimestamp={props.pulseTimestamp}
         surfaceNormalOffset={settings.surfaceNormalOffset}
         swarmOrbitSpeed={settings.swarmOrbitSpeed}
         swarmOrbitRadius={settings.swarmOrbitRadius}

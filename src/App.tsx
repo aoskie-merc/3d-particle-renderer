@@ -1,6 +1,5 @@
 import { Canvas } from '@react-three/fiber';
 
-import type { DragEvent as ReactDragEvent } from 'react';
 import { useCallback, useEffect, useState } from 'react';
 
 import type { BufferGeometry } from 'three';
@@ -12,7 +11,6 @@ import {
   persistCustomBaselineSettings,
   schedulePersistHydratedAppState,
 } from './appPreferencesPersistence';
-import DropLanding from './components/DropLanding';
 import Scene from './components/Scene';
 import SettingsChrome from './components/SettingsChrome';
 import ThemeToggle from './components/ThemeToggle';
@@ -21,14 +19,13 @@ import {
   type TMercuryAppearance,
   mercuryDefaultParticleHex,
 } from './theme';
-import { ingestMeshFile } from './utils/meshIngest';
+import { loadStaticModel } from './utils/meshIngest';
 
 export default function App() {
   const [bundled] = useState(() => loadHydratedAppState());
   const [geometry, setGeometry] = useState<BufferGeometry | null>(null);
   const [settings, setSettings] = useState<IParticleSettings>(bundled.settings);
   const [sidebarOpen, setSidebarOpen] = useState(false);
-  const [loadError, setLoadError] = useState<string | null>(null);
 
   const [appearance, setAppearance] = useState<TMercuryAppearance>(bundled.appearance);
   const [particleColorFollowsTheme, setParticleColorFollowsTheme] =
@@ -38,14 +35,8 @@ export default function App() {
     document.documentElement.dataset.theme = appearance;
   }, [appearance]);
 
-  /*
-   * When theme-tracking is on, repaint default particle/skin tints whenever appearance flips.
-   * react-hooks/set-state-in-effect flags this synchronous sync as “cascading”; it is intentional UX.
-   */
   useEffect(() => {
     if (!particleColorFollowsTheme) return;
-
-    // eslint-disable-next-line react-hooks/set-state-in-effect -- theme drives default beige tints only when following theme
     setSettings((previous) => ({
       ...previous,
       color: mercuryDefaultParticleHex(appearance),
@@ -55,46 +46,25 @@ export default function App() {
 
   useEffect(() => {
     schedulePersistHydratedAppState(
-      {
-        appearance,
-        particleColorFollowsTheme,
-        settings,
-      },
+      { appearance, particleColorFollowsTheme, settings },
       500,
     );
-
     return () => cancelScheduledPersistHydratedAppState();
   }, [appearance, particleColorFollowsTheme, settings]);
 
-  const applyFile = useCallback(async (file: File) => {
-    try {
-      setLoadError(null);
-      const next = await ingestMeshFile(file);
-
-      setGeometry((previous: BufferGeometry | null) => {
-        if (previous) {
-          previous.dispose();
-        }
-
-        return next;
-      });
-      setSidebarOpen(false);
-    } catch (cause) {
-      const message =
-        cause instanceof Error ? cause.message : 'Could not parse that mesh file.';
-      setLoadError(message);
-    }
+  useEffect(() => {
+    let cancelled = false;
+    loadStaticModel('/model.stl').then((geom) => {
+      if (!cancelled) setGeometry(geom);
+    });
+    return () => { cancelled = true; };
   }, []);
 
   const patchSettings = useCallback((partial: Partial<IParticleSettings>) => {
     if (partial.color !== undefined || partial.skinColor !== undefined) {
       setParticleColorFollowsTheme(false);
     }
-
-    setSettings((previous: IParticleSettings) => ({
-      ...previous,
-      ...partial,
-    }));
+    setSettings((previous: IParticleSettings) => ({ ...previous, ...partial }));
   }, []);
 
   const normalizeCssHexForCompare = useCallback((raw: string): string => {
@@ -102,19 +72,14 @@ export default function App() {
     if (!t.startsWith('#')) return t.toLowerCase();
     let hex = t.slice(1).toLowerCase();
     if (/^[0-9a-f]{3}$/.test(hex)) {
-      hex = hex
-        .split('')
-        .map((ch: string) => ch + ch)
-        .join('');
+      hex = hex.split('').map((ch: string) => ch + ch).join('');
     }
-
     return `#${hex.slice(0, 6)}`;
   }, []);
 
   const applyBaselineSettings = useCallback(
     (base: IParticleSettings) => {
       const themeHex = mercuryDefaultParticleHex(appearance);
-
       const colorMatches =
         normalizeCssHexForCompare(base.color) === normalizeCssHexForCompare(themeHex);
       const skinMatches =
@@ -139,37 +104,11 @@ export default function App() {
     persistCustomBaselineSettings(settings);
   }, [settings]);
 
-  const preventNav = useCallback((event: ReactDragEvent) => {
-    event.preventDefault();
-  }, []);
-
-  const absorbDrop = useCallback(
-    (event: ReactDragEvent<HTMLElement>) => {
-      event.preventDefault();
-      const file = event.dataTransfer.files.item(0);
-
-      if (file) {
-        void applyFile(file);
-      }
-    },
-    [applyFile],
-  );
-
-  const mesh = geometry;
-
   return (
-    <main
-      aria-label="Particle workspace"
-      className="viewport"
-      tabIndex={-1}
-      onDragOver={(event: ReactDragEvent<HTMLElement>) => {
-        preventNav(event);
-      }}
-      onDrop={absorbDrop}
-    >
+    <main aria-label="Particle workspace" className="viewport" tabIndex={-1}>
       <ThemeToggle appearance={appearance} setAppearance={setAppearance} />
 
-      {mesh ? (
+      {geometry ? (
         <Canvas
           camera={{
             far: 200,
@@ -186,55 +125,21 @@ export default function App() {
           }}
           shadows={false}
         >
-          <Scene appearance={appearance} geometry={mesh} settings={settings} />
+          <Scene appearance={appearance} geometry={geometry} settings={settings} />
         </Canvas>
       ) : (
-        <DropLanding
-          appearance={appearance}
-          boidAlignment={settings.boidAlignment}
-          boidCohesion={settings.boidCohesion}
-          boidNoise={settings.boidNoise}
-          boidSeparation={settings.boidSeparation}
-          boidSpeedLimit={settings.boidSpeedLimit}
-          boidVisualRange={settings.boidVisualRange}
-          landingParticleCount={settings.landingParticleCount}
-          landingParticleSize={settings.landingParticleSize}
-          loadError={loadError}
-          panelBlur={settings.panelBlur}
-          panelOpacity={settings.panelOpacity}
-          swarmOrbitSpeed={settings.swarmOrbitSpeed}
-          swarmOrbitRadius={settings.swarmOrbitRadius}
-          swarmSplitIntensity={settings.swarmSplitIntensity}
-          swarmSplitSpeed={settings.swarmSplitSpeed}
-          onFileChosen={(file: File): void => {
-            void applyFile(file);
-          }}
-        />
+        <div className="loading-model">Loading model…</div>
       )}
 
       <SettingsChrome
         panelOpen={sidebarOpen}
-        particleControlsEnabled={mesh !== null}
+        particleControlsEnabled={geometry !== null}
         resetToDefault={resetToDefault}
         saveAsDefault={saveAsDefault}
         setPanelOpen={setSidebarOpen}
         settings={settings}
         onPatch={patchSettings}
       />
-
-      {loadError ? (
-        <div className="mesh-error-toast">
-          <p className="mesh-error-toast__text">{loadError}</p>
-          <button
-            aria-label="Dismiss error"
-            className="mesh-error-toast__dismiss"
-            type="button"
-            onClick={() => setLoadError(null)}
-          >
-            ×
-          </button>
-        </div>
-      ) : null}
     </main>
   );
 }

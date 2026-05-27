@@ -34,6 +34,16 @@ body,
   width: 100%;
 }
 
+.loading-model {
+  position: fixed;
+  inset: 0;
+  display: grid;
+  place-items: center;
+  font-size: 1.1rem;
+  color: var(--app-text-muted);
+  background: var(--app-shell-bg);
+}
+
 .mesh-error-toast {
   position: fixed;
   top: 72px;
