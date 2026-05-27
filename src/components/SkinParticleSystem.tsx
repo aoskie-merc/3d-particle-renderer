@@ -147,7 +147,7 @@ export default function SkinParticleSystem(props: ISkinParticleSystemProps) {
     uniforms.skinNormalShading.value = normalShading;
     uniforms.skinDepthFade.value = depthFade;
     uniforms.skinContourDensity.value = contourDensity;
-    uniforms.particleWorldRadius.value = particleSize * 3.0;
+    uniforms.particleWorldRadius.value = particleSize * 8.0;
     uniforms.lightWorldDir.value.copy(LIGHT_WORLD_DIR);
 
     const highlightActive = sweepHighlightY !== null;
@@ -232,7 +232,7 @@ void main() {
 
   gl_Position = projectionMatrix * mvPosition;
   float invZ = max(0.002, -mvPosition.z);
-  gl_PointSize = clamp(radialSize * focalPixelScale / invZ, 3.0, 64.0);
+  gl_PointSize = clamp(radialSize * focalPixelScale / invZ, 1.0, 64.0);
 }
 `;
 

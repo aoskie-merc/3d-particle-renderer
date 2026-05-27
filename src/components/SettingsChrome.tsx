@@ -296,7 +296,9 @@ export default function SettingsChrome(props: Readonly<IProps>): ReactElement {
         onClick={() => setOpen((previous) => !previous)}
       >
         <ToggleGlyph open={open} />
-        <span className={styles.sr}>{open ? 'Close' : 'Open'} settings sidebar</span>
+        <span className={styles.sr}>
+          {open ? "Close" : "Open"} settings sidebar
+        </span>
       </button>
 
       <button
@@ -339,8 +341,8 @@ export default function SettingsChrome(props: Readonly<IProps>): ReactElement {
 
             <Slider
               label="Dot size"
-              max={0.16}
-              min={0.002}
+              max={0.06}
+              min={0.001}
               step={0.0005}
               value={settings.particleSize}
               onChange={(next: number) => {

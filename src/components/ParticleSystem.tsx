@@ -228,7 +228,7 @@ export default function ParticleSystem(props: IParticleSystemProps) {
 
     const arr = mesh.instanceMatrix.array as Float32Array;
     const boids = boidsRef.current;
-    const s = particleSize;
+    const s = particleSize * 5.0;
 
     for (let i = 0; i < count; i += 1) {
       const b = boids[i];
@@ -278,7 +278,7 @@ export default function ParticleSystem(props: IParticleSystemProps) {
     }
 
     const arr = mesh.instanceMatrix.array as Float32Array;
-    const s = sizeRef.current;
+    const s = sizeRef.current * 5.0;
 
     for (let i = 0; i < count; i += 1) {
       const b = boids[i];

@@ -119,7 +119,7 @@ function mergeParticleSettingsStored(raw: unknown): IParticleSettings {
         ? record.particleCount
         : Number(record.particleCount) || d.particleCount,
     ),
-    particleSize: num(record.particleSize, d.particleSize, 0.00025, 0.85),
+    particleSize: num(record.particleSize, d.particleSize, 0.0005, 0.1),
     showWireframe:
       typeof record.showWireframe === "boolean"
         ? record.showWireframe
@@ -150,8 +150,18 @@ function mergeParticleSettingsStored(raw: unknown): IParticleSettings {
       40,
     ),
     wireOpacity: num(record.wireOpacity, d.wireOpacity, 0, 1),
-    landingParticleSize: num(record.landingParticleSize, d.landingParticleSize, 1, 6),
-    landingParticleCount: num(record.landingParticleCount, d.landingParticleCount, 120, 600),
+    landingParticleSize: num(
+      record.landingParticleSize,
+      d.landingParticleSize,
+      1,
+      6,
+    ),
+    landingParticleCount: num(
+      record.landingParticleCount,
+      d.landingParticleCount,
+      120,
+      600,
+    ),
     boidVisualRange: num(record.boidVisualRange, d.boidVisualRange, 0.05, 0.5),
     boidSeparation: num(record.boidSeparation, d.boidSeparation, 0, 0.2),
     boidAlignment: num(record.boidAlignment, d.boidAlignment, 0, 0.2),
