@@ -639,7 +639,7 @@ export default function SettingsChrome(props: Readonly<IProps>): ReactElement {
               >
                 <Slider
                   label="Orbit speed"
-                  max={3}
+                  max={5}
                   min={0.1}
                   step={0.05}
                   value={settings.swarmOrbitSpeed}
@@ -650,9 +650,9 @@ export default function SettingsChrome(props: Readonly<IProps>): ReactElement {
 
                 <Slider
                   label="Orbit radius"
-                  max={3}
-                  min={0.2}
-                  step={0.05}
+                  max={6}
+                  min={0.5}
+                  step={0.1}
                   value={settings.swarmOrbitRadius}
                   onChange={(next: number) => {
                     onPatch({ swarmOrbitRadius: next });
@@ -672,7 +672,7 @@ export default function SettingsChrome(props: Readonly<IProps>): ReactElement {
 
                 <Slider
                   label="Split speed"
-                  max={3}
+                  max={5}
                   min={0.1}
                   step={0.05}
                   value={settings.swarmSplitSpeed}
@@ -912,7 +912,7 @@ export default function SettingsChrome(props: Readonly<IProps>): ReactElement {
               >
                 <Slider
                   label="Orbit speed"
-                  max={3}
+                  max={5}
                   min={0.1}
                   step={0.05}
                   value={settings.swarmOrbitSpeed}
@@ -923,9 +923,9 @@ export default function SettingsChrome(props: Readonly<IProps>): ReactElement {
 
                 <Slider
                   label="Orbit radius"
-                  max={3}
-                  min={0.2}
-                  step={0.05}
+                  max={6}
+                  min={0.5}
+                  step={0.1}
                   value={settings.swarmOrbitRadius}
                   onChange={(next: number) => {
                     onPatch({ swarmOrbitRadius: next });
@@ -945,7 +945,7 @@ export default function SettingsChrome(props: Readonly<IProps>): ReactElement {
 
                 <Slider
                   label="Split speed"
-                  max={3}
+                  max={5}
                   min={0.1}
                   step={0.05}
                   value={settings.swarmSplitSpeed}

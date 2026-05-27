@@ -12,7 +12,7 @@ import type {
 import { snapParticleCountForUi } from "./utils/particleCountUi";
 import { snapSkinParticleCountForUi } from "./utils/skinParticleCountUi";
 
-export const STORAGE_KEY_SETTINGS = "3d-particle-mapper-settings";
+export const STORAGE_KEY_SETTINGS = "swarm-sculpture-settings";
 
 export const STORAGE_KEY_THEME = "3d-particle-mapper-theme";
 
@@ -159,8 +159,8 @@ function mergeParticleSettingsStored(raw: unknown): IParticleSettings {
     boidHomeSpring: num(record.boidHomeSpring, d.boidHomeSpring, 0, 0.01),
     boidSpeedLimit: num(record.boidSpeedLimit, d.boidSpeedLimit, 0.005, 0.1),
     boidNoise: num(record.boidNoise, d.boidNoise, 0, 0.01),
-    swarmOrbitSpeed: num(record.swarmOrbitSpeed, d.swarmOrbitSpeed, 0.1, 3),
-    swarmOrbitRadius: num(record.swarmOrbitRadius, d.swarmOrbitRadius, 0.2, 3),
+    swarmOrbitSpeed: num(record.swarmOrbitSpeed, d.swarmOrbitSpeed, 0.1, 5),
+    swarmOrbitRadius: num(record.swarmOrbitRadius, d.swarmOrbitRadius, 0.5, 6),
     swarmSplitIntensity: num(
       record.swarmSplitIntensity,
       d.swarmSplitIntensity,
