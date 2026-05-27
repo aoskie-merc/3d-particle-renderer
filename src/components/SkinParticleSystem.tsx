@@ -259,14 +259,13 @@ void main() {
 
   float soft = clamp(1.0 - smoothstep(0.38, 0.5, r), 0.0, 1.0);
 
-  float highlightBoost = 0.0;
+  float finalAlpha;
   if (sweepHighlightActive > 0.5) {
-    float dist = abs(vWorldY - sweepHighlightY);
-    highlightBoost = clamp(1.0 - dist / 0.3, 0.0, 1.0);
-    highlightBoost *= highlightBoost;
+    float revealEdge = smoothstep(sweepHighlightY + 0.25, sweepHighlightY - 0.05, vWorldY);
+    finalAlpha = vAlpha * revealEdge;
+  } else {
+    finalAlpha = vAlpha;
   }
-
-  float finalAlpha = mix(vAlpha, clamp(vAlpha + highlightBoost * (1.0 - vAlpha), 0.0, 1.0), sweepHighlightActive);
 
   gl_FragColor = vec4(vColor, finalAlpha * soft);
 }

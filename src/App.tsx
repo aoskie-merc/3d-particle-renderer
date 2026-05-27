@@ -74,10 +74,6 @@ export default function App() {
 
   const [animDurationMs, setAnimDurationMs] = useState(1000);
 
-  const SWEEP_BOTTOM = -2.0;
-  const SWEEP_TOP = 2.0;
-  const SWEEP_FADE_DURATION_MS = Math.round(animDurationMs * 0.4);
-
   const ENTER_EXIT_FAR_Y = -4.0;
 
   const handleTrigger = useCallback(
@@ -86,9 +82,14 @@ export default function App() {
 
       if (trigger === "sweep-up") {
         setTriggerPhase("sweep-up");
-        setSweepY(SWEEP_BOTTOM);
-        setAttractorOverride(null);
-        setAttractorBoost(undefined);
+
+        const sweepBottom = -1.5;
+        const sweepTop = 1.5;
+        const holdDuration = 300;
+
+        setSweepY(sweepBottom);
+        setAttractorOverride({ x: 0, y: sweepBottom, z: 0 });
+        setAttractorBoost(8);
 
         const startTime = performance.now();
 
@@ -98,22 +99,17 @@ export default function App() {
           if (elapsed < animDurationMs) {
             const t = elapsed / animDurationMs;
             const eased = t * t * (3 - 2 * t);
-            const y = SWEEP_BOTTOM + (SWEEP_TOP - SWEEP_BOTTOM) * eased;
+            const y = sweepBottom + (sweepTop - sweepBottom) * eased;
             setSweepY(y);
+            setAttractorOverride({ x: 0, y, z: 0 });
+            animRafRef.current = requestAnimationFrame(animateSweep);
+          } else if (elapsed < animDurationMs + holdDuration) {
             animRafRef.current = requestAnimationFrame(animateSweep);
           } else {
-            const fadeElapsed = elapsed - animDurationMs;
-
-            if (fadeElapsed < SWEEP_FADE_DURATION_MS) {
-              const fadeT = fadeElapsed / SWEEP_FADE_DURATION_MS;
-              const fadeEased = fadeT * fadeT;
-              const y = SWEEP_TOP + fadeEased * 1.0;
-              setSweepY(y);
-              animRafRef.current = requestAnimationFrame(animateSweep);
-            } else {
-              setSweepY(null);
-              setTriggerPhase("idle");
-            }
+            setSweepY(null);
+            setAttractorOverride(null);
+            setAttractorBoost(undefined);
+            setTriggerPhase("idle");
           }
         }
 
@@ -182,7 +178,7 @@ export default function App() {
         return;
       }
     },
-    [animDurationMs, SWEEP_FADE_DURATION_MS],
+    [animDurationMs],
   );
 
   useEffect(() => {
@@ -258,12 +254,7 @@ export default function App() {
         setAppearance={setAppearance}
       />
 
-      <TriggerBar
-        duration={animDurationMs}
-        phase={triggerPhase}
-        onDurationChange={setAnimDurationMs}
-        onTrigger={handleTrigger}
-      />
+      <TriggerBar phase={triggerPhase} onTrigger={handleTrigger} />
 
       {geometry ? (
         <Canvas
@@ -297,6 +288,8 @@ export default function App() {
       )}
 
       <SettingsChrome
+        animDuration={animDurationMs}
+        onAnimDurationChange={setAnimDurationMs}
         panelOpen={sidebarOpen}
         resetToDefault={resetToDefault}
         saveAsDefault={saveAsDefault}
