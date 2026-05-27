@@ -5,7 +5,6 @@ import type {
 } from "./types";
 
 import { BOID_DEFAULTS } from "./sim/boidParams";
-import { DEFAULT_PARTICLE_COLOR_ON_DARK_CANVAS } from "./theme";
 
 /** All tunable particle + view settings (`appPreferencesPersistence` hydrates defaults from localStorage). */
 export interface IParticleSettings {
@@ -65,21 +64,21 @@ export interface IParticleSettings {
 /** Defaults match Mercury dark canvas + light-beige particles (see theme.ts). */
 export const PARTICLE_SETTINGS_DEFAULTS: IParticleSettings = {
   blendMode: "normal",
-  color: DEFAULT_PARTICLE_COLOR_ON_DARK_CANVAS,
+  color: "#eccc98",
   distribution: "areaWeighted",
-  directionBias: "radial",
-  movementAmplitude: 0.09,
-  movementSpeed: 0.94,
+  directionBias: "random",
+  movementAmplitude: 1.09,
+  movementSpeed: 0.18,
   panelBlur: 12,
   panelOpacity: 0.7,
-  opacity: 0.5,
-  particleCount: 2_000,
-  particleSize: 0.003,
+  opacity: 0.76,
+  particleCount: 9_728,
+  particleSize: 0.002,
   showWireframe: false,
-  surfaceNormalOffset: 0.035,
-  vibrationAmplitude: 0.09,
+  surfaceNormalOffset: 0.354,
+  vibrationAmplitude: 0.035,
   vibrationDamping: 0.35,
-  vibrationFrequency: 0.85,
+  vibrationFrequency: 0.23,
   vibrationNoiseScale: 0.92,
   wireOpacity: 0.28,
   landingParticleSize: 2.5,
@@ -96,11 +95,11 @@ export const PARTICLE_SETTINGS_DEFAULTS: IParticleSettings = {
   swarmSplitIntensity: BOID_DEFAULTS.splitIntensity,
   swarmSplitSpeed: BOID_DEFAULTS.splitSpeed,
   skinEnabled: true,
-  skinParticleCount: 32_768,
-  skinParticleSize: 0.028,
-  skinDepthFade: 0.3,
-  skinNormalShading: 0.5,
-  skinContourDensity: 0.45,
-  skinColor: DEFAULT_PARTICLE_COLOR_ON_DARK_CANVAS,
-  skinOpacity: 0.5,
+  skinParticleCount: 135_936,
+  skinParticleSize: 0.0055,
+  skinDepthFade: 0.13,
+  skinNormalShading: 0,
+  skinContourDensity: 0.68,
+  skinColor: "#c8b79b",
+  skinOpacity: 0.81,
 };

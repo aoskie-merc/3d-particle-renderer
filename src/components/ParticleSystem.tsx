@@ -41,6 +41,8 @@ export interface IParticleSystemProps {
   swarmSplitSpeed: number;
   /** External pulse timestamp — triggers an extra split burst (e.g. verification check complete) */
   pulseTimestamp?: number;
+  /** When set, overrides the Lissajous attractor with a fixed position (used by sweep triggers). */
+  attractorOverride?: { x: number; y: number; z: number } | null;
 }
 
 const blendingForMode = (mode: TBlendModeKey) => {
@@ -78,7 +80,7 @@ export default function ParticleSystem(props: IParticleSystemProps) {
     swarmSplitSpeed,
   } = props;
 
-  const { pulseTimestamp = 0 } = props;
+  const { attractorOverride = null, pulseTimestamp = 0 } = props;
 
   const meshRef = useRef<InstancedMesh>(null);
   const boidsRef = useRef<IBoidParticle[]>([]);
@@ -117,8 +119,10 @@ export default function ParticleSystem(props: IParticleSystemProps) {
       separationFactor: boidSeparation,
       alignmentFactor: boidAlignment,
       cohesionFactor: boidCohesion,
-      attractorFactor: BOID_DEFAULTS.attractorFactor,
-      homeSpringFactor: boidHomeSpring,
+      attractorFactor: attractorOverride
+        ? BOID_DEFAULTS.attractorFactor * 6
+        : BOID_DEFAULTS.attractorFactor,
+      homeSpringFactor: attractorOverride ? 0 : boidHomeSpring,
       maxHomeDistance: BOID_DEFAULTS.maxHomeDistance,
       speedLimit: boidSpeedLimit,
       minSpeed: boidSpeedLimit * 0.32,
@@ -130,8 +134,10 @@ export default function ParticleSystem(props: IParticleSystemProps) {
       splitDecay: BOID_DEFAULTS.splitDecay,
       steeringInertia: BOID_DEFAULTS.steeringInertia,
       velocityStretchFactor: BOID_DEFAULTS.velocityStretchFactor,
+      attractorOverride,
     };
   }, [
+    attractorOverride,
     boidAlignment,
     boidCohesion,
     boidHomeSpring,
@@ -228,7 +234,10 @@ export default function ParticleSystem(props: IParticleSystemProps) {
     if (pulse > 0.01) {
       pulseIntensityRef.current *= 0.97;
       const params = boidParamsRef.current;
-      const boosted = { ...params, splitIntensity: params.splitIntensity + pulse * 0.5 };
+      const boosted = {
+        ...params,
+        splitIntensity: params.splitIntensity + pulse * 0.5,
+      };
       stepBoids(boids, boosted, state.clock.elapsedTime);
     } else {
       stepBoids(boids, boidParamsRef.current, state.clock.elapsedTime);

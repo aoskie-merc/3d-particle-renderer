@@ -205,6 +205,7 @@ export function stepBoids(
   const {
     alignmentFactor,
     attractorFactor,
+    attractorOverride,
     cohesionFactor,
     homeSpringFactor,
     maxHomeDistance,
@@ -255,28 +256,36 @@ export function stepBoids(
   const headZ = flockVZ / flockSpeed;
 
   // --- Attractor: sweeps along the model surface, not near the origin ---
-  // The attractor traces a path on a sphere slightly outside the mesh surface.
-  // orbitRadius controls angular amplitude: 0 = stationary, 1 = full hemisphere.
-  const SURFACE_R = 0.9; // must match CANONICAL_MESH_RADIUS
-  const ATTRACTOR_HOVER = 1.15;
-  const t = elapsed * orbitSpeed;
-  const angularAmp = orbitRadius * (Math.PI / 2);
+  let attractX: number;
+  let attractY: number;
+  let attractZ: number;
 
-  const theta =
-    Math.sin(t * 0.14) * 0.6 * angularAmp +
-    Math.sin(t * 0.07 + 2.1) * 0.3 * angularAmp +
-    Math.sin(t * 0.23 + 0.8) * 0.1 * angularAmp;
-  const phi =
-    Math.PI * 0.5 +
-    Math.cos(t * 0.11) * 0.5 * angularAmp +
-    Math.sin(t * 0.06 + 1.3) * 0.25 * angularAmp +
-    Math.cos(t * 0.19 + 1.7) * 0.08 * angularAmp;
+  if (attractorOverride) {
+    attractX = attractorOverride.x;
+    attractY = attractorOverride.y;
+    attractZ = attractorOverride.z;
+  } else {
+    const SURFACE_R = 0.9;
+    const ATTRACTOR_HOVER = 1.15;
+    const t = elapsed * orbitSpeed;
+    const angularAmp = orbitRadius * (Math.PI / 2);
 
-  const attractDist = SURFACE_R * ATTRACTOR_HOVER;
-  const sinPhi = Math.sin(phi);
-  const attractX = attractDist * sinPhi * Math.cos(theta);
-  const attractY = attractDist * Math.cos(phi);
-  const attractZ = attractDist * sinPhi * Math.sin(theta);
+    const theta =
+      Math.sin(t * 0.14) * 0.6 * angularAmp +
+      Math.sin(t * 0.07 + 2.1) * 0.3 * angularAmp +
+      Math.sin(t * 0.23 + 0.8) * 0.1 * angularAmp;
+    const phi =
+      Math.PI * 0.5 +
+      Math.cos(t * 0.11) * 0.5 * angularAmp +
+      Math.sin(t * 0.06 + 1.3) * 0.25 * angularAmp +
+      Math.cos(t * 0.19 + 1.7) * 0.08 * angularAmp;
+
+    const attractDist = SURFACE_R * ATTRACTOR_HOVER;
+    const sinPhi = Math.sin(phi);
+    attractX = attractDist * sinPhi * Math.cos(theta);
+    attractY = attractDist * Math.cos(phi);
+    attractZ = attractDist * sinPhi * Math.sin(theta);
+  }
 
   // --- Split pulse along flock heading perpendicular ---
   // 3 overlapping frequencies with power-8 for wider sustained peaks (matches 2D prototype)

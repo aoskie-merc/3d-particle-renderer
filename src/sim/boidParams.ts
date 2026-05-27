@@ -35,24 +35,26 @@ export interface IBoidParams {
   steeringInertia: number;
   /** Elongation bias along the flock's travel direction. */
   velocityStretchFactor: number;
+  /** When set, replaces the Lissajous orbit attractor with a fixed world-space position. */
+  attractorOverride?: { x: number; y: number; z: number } | null;
 }
 
 export const BOID_DEFAULTS: Readonly<IBoidParams> = {
-  visualRange: 0.14,
-  separationDist: 0.03,
-  separationFactor: 0.04,
-  alignmentFactor: 0.045,
-  cohesionFactor: 0.003,
+  visualRange: 0.095,
+  separationDist: 0.02,
+  separationFactor: 0.008,
+  alignmentFactor: 0.008,
+  cohesionFactor: 0.0002,
   attractorFactor: 0.0003,
-  homeSpringFactor: 0.0005,
+  homeSpringFactor: 0.0002,
   maxHomeDistance: 0.3,
-  speedLimit: 0.005,
-  minSpeed: 0.002,
-  noiseMagnitude: 0.0006,
-  orbitSpeed: 1.0,
-  orbitRadius: 0.2,
-  splitIntensity: 0.35,
-  splitSpeed: 1.0,
+  speedLimit: 0.006,
+  minSpeed: 0.0024,
+  noiseMagnitude: 0.0004,
+  orbitSpeed: 0.15,
+  orbitRadius: 1.3,
+  splitIntensity: 0.15,
+  splitSpeed: 2.55,
   splitDecay: 3.0,
   steeringInertia: 0.68,
   velocityStretchFactor: 0.006,

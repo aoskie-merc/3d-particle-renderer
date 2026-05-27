@@ -1,0 +1,75 @@
+/* ─── Trigger bar — vertical button strip on left viewport edge ─── */
+
+.bar {
+  position: fixed;
+  top: 50%;
+  left: 12px;
+  z-index: 130;
+  transform: translateY(-50%);
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.trigger {
+  box-sizing: border-box;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  width: var(--app-ds-icon-btn-size);
+  height: var(--app-ds-icon-btn-size);
+  padding: 0;
+  margin: 0;
+  border: none;
+  border-radius: var(--app-ds-icon-btn-border-radius);
+  font-size: 14px;
+  line-height: 1;
+  color: var(--app-ds-icon-btn-fg);
+  background: transparent;
+  cursor: pointer;
+  backdrop-filter: blur(6px);
+  transition:
+    background-color 220ms ease,
+    color 220ms ease,
+    transform 160ms ease;
+}
+
+.trigger:hover {
+  background: var(--app-ds-icon-btn-hover-bg);
+  color: var(--app-ds-icon-btn-fg-hover);
+}
+
+.trigger:active:not(:disabled) {
+  transform: scale(0.95);
+}
+
+.trigger:disabled {
+  opacity: 0.4;
+  cursor: default;
+}
+
+.triggerActive {
+  background: var(--app-ds-icon-btn-active-bg);
+  color: var(--app-ds-icon-btn-fg-hover);
+}
+
+.trigger:focus-visible {
+  outline: none;
+  box-shadow:
+    0 0 0 1px var(--app-ds-focus-ring-inner),
+    0 0 0 3px var(--app-ds-focus-ring-outer);
+}
+
+.sr {
+  position: absolute;
+  clip: rect(0 0 0 0);
+  width: 1px;
+  height: 1px;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .trigger {
+    transition: none;
+  }
+}

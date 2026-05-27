@@ -1,8 +1,8 @@
-import { useFrame, useThree } from '@react-three/fiber';
+import { useFrame, useThree } from "@react-three/fiber";
 
-import { useEffect, useMemo, useRef, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from "react";
 
-import type { BufferGeometry } from 'three';
+import type { BufferGeometry } from "three";
 import {
   BufferAttribute,
   BufferGeometry as SkinGeometry,
@@ -10,10 +10,10 @@ import {
   NormalBlending,
   ShaderMaterial,
   Vector3,
-} from 'three';
-import type { Points as PointsMesh } from 'three';
+} from "three";
+import type { Points as PointsMesh } from "three";
 
-import { sampleMeshSurface } from '../utils/surfaceSampler';
+import { sampleMeshSurface } from "../utils/surfaceSampler";
 
 /* eslint-disable react-hooks/immutability -- ShaderMaterial uniforms & draw-range (Three.js uploads each frame). */
 
@@ -26,6 +26,8 @@ export interface ISkinParticleSystemProps {
   particleSize: number;
   skinColor: string;
   skinOpacity: number;
+  /** Y-plane of the sweep highlight; null/undefined = no highlight active. */
+  sweepHighlightY?: number | null;
 }
 
 const LIGHT_WORLD_DIR = new Vector3(0.5, 0.8, 0.35).normalize();
@@ -43,6 +45,8 @@ function skinUniformHandles() {
     particleWorldRadius: { value: 1 },
     depthSpanHint: { value: 24 },
     focalPixelScale: { value: 420 },
+    sweepHighlightY: { value: -999.0 },
+    sweepHighlightActive: { value: 0.0 },
   };
 }
 
@@ -57,6 +61,7 @@ export default function SkinParticleSystem(props: ISkinParticleSystemProps) {
     particleSize,
     skinColor,
     skinOpacity,
+    sweepHighlightY = null,
   } = props;
 
   const { camera, viewport } = useThree();
@@ -65,7 +70,7 @@ export default function SkinParticleSystem(props: ISkinParticleSystemProps) {
   const tintColor = useMemo(() => new Color(skinColor), [skinColor]);
 
   const samples = useMemo(
-    () => sampleMeshSurface(geometry, particleCount, 'areaWeighted'),
+    () => sampleMeshSurface(geometry, particleCount, "areaWeighted"),
     [geometry, particleCount],
   );
 
@@ -73,15 +78,17 @@ export default function SkinParticleSystem(props: ISkinParticleSystemProps) {
     const geo = new SkinGeometry();
     const pos = Float32Array.from(samples.positions);
     const nurm = Float32Array.from(samples.normals);
-    geo.setAttribute('position', new BufferAttribute(pos, 3));
-    geo.setAttribute('instanceNormal', new BufferAttribute(nurm, 3));
+    geo.setAttribute("position", new BufferAttribute(pos, 3));
+    geo.setAttribute("instanceNormal", new BufferAttribute(nurm, 3));
     return geo;
   }, [samples.normals, samples.positions]);
 
   const depthSpanHintDerived = useMemo(() => {
     geometry.computeBoundingSphere();
     const sphere = geometry.boundingSphere;
-    return sphere && Number.isFinite(sphere.radius) ? Math.max(sphere.radius * 5.25, 2) : 24;
+    return sphere && Number.isFinite(sphere.radius)
+      ? Math.max(sphere.radius * 5.25, 2)
+      : 24;
   }, [geometry]);
 
   /** Single Three ShaderMaterial bundle; uniforms are tweaked every frame outside React reconciliation. */
@@ -133,7 +140,7 @@ export default function SkinParticleSystem(props: ISkinParticleSystemProps) {
     uniforms.camWorldPos.value.copy(camScratch.current);
 
     const projection = camera.projectionMatrix?.elements;
-    const pr = typeof projection?.[5] === 'number' ? projection[5] : 1;
+    const pr = typeof projection?.[5] === "number" ? projection[5] : 1;
     uniforms.focalPixelScale.value = (viewport.height * pr) / 2;
 
     uniforms.skinOpacity.value = skinOpacity;
@@ -142,6 +149,10 @@ export default function SkinParticleSystem(props: ISkinParticleSystemProps) {
     uniforms.skinContourDensity.value = contourDensity;
     uniforms.particleWorldRadius.value = particleSize * 3.0;
     uniforms.lightWorldDir.value.copy(LIGHT_WORLD_DIR);
+
+    const highlightActive = sweepHighlightY !== null;
+    uniforms.sweepHighlightY.value = highlightActive ? sweepHighlightY : -999.0;
+    uniforms.sweepHighlightActive.value = highlightActive ? 1.0 : 0.0;
 
     const meshPoints = pointsRef.current;
 
@@ -175,12 +186,16 @@ uniform float skinContourDensity;
 uniform float particleWorldRadius;
 uniform float depthSpanHint;
 uniform float focalPixelScale;
+uniform float sweepHighlightY;
+uniform float sweepHighlightActive;
 
 varying vec3 vColor;
 varying float vAlpha;
+varying float vWorldY;
 
 void main() {
   vec4 worldPos = modelMatrix * vec4(position, 1.0);
+  vWorldY = worldPos.y;
 
   vec3 N = normalize(mat3(normalMatrix) * instanceNormal);
   vec3 V = normalize(camWorldPos - worldPos.xyz);
@@ -222,8 +237,12 @@ void main() {
 `;
 
 const FRAG_SHADER = /* glsl */ `
+uniform float sweepHighlightY;
+uniform float sweepHighlightActive;
+
 varying vec3 vColor;
 varying float vAlpha;
+varying float vWorldY;
 
 void main() {
   vec2 c = gl_PointCoord - vec2(0.5);
@@ -231,6 +250,16 @@ void main() {
   if (r > 0.5) discard;
 
   float soft = clamp(1.0 - smoothstep(0.38, 0.5, r), 0.0, 1.0);
-  gl_FragColor = vec4(vColor, vAlpha * soft);
+
+  float highlightBoost = 0.0;
+  if (sweepHighlightActive > 0.5) {
+    float dist = abs(vWorldY - sweepHighlightY);
+    highlightBoost = clamp(1.0 - dist / 0.3, 0.0, 1.0);
+    highlightBoost *= highlightBoost;
+  }
+
+  float finalAlpha = mix(vAlpha, clamp(vAlpha + highlightBoost * (1.0 - vAlpha), 0.0, 1.0), sweepHighlightActive);
+
+  gl_FragColor = vec4(vColor, finalAlpha * soft);
 }
 `;

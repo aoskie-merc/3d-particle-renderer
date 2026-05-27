@@ -20,6 +20,10 @@ export interface ISceneProps {
   settings: IParticleSettings;
   /** External pulse timestamp — triggers swarm burst on verification check completion */
   pulseTimestamp?: number;
+  /** When set, overrides the swarm attractor to this position (sweep trigger). */
+  attractorOverride?: { x: number; y: number; z: number } | null;
+  /** Y-plane of the sweep highlight for skin particles; null = inactive. */
+  sweepHighlightY?: number | null;
 }
 
 export default function Scene(props: ISceneProps) {
@@ -83,11 +87,13 @@ export default function Scene(props: ISceneProps) {
           particleSize={settings.skinParticleSize}
           skinColor={settings.skinColor}
           skinOpacity={settings.skinOpacity}
+          sweepHighlightY={props.sweepHighlightY}
         />
       ) : null}
 
       <ParticleSystem
         key={geometry.uuid}
+        attractorOverride={props.attractorOverride}
         blendMode={settings.blendMode}
         boidAlignment={settings.boidAlignment}
         boidCohesion={settings.boidCohesion}
