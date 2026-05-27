@@ -178,6 +178,10 @@ function mergeParticleSettingsStored(raw: unknown): IParticleSettings {
       1,
     ),
     swarmSplitSpeed: num(record.swarmSplitSpeed, d.swarmSplitSpeed, 0.1, 3),
+    proximityReveal:
+      typeof record.proximityReveal === "boolean"
+        ? record.proximityReveal
+        : d.proximityReveal,
     skinEnabled:
       typeof record.skinEnabled === "boolean"
         ? record.skinEnabled

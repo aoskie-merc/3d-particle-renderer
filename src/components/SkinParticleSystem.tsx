@@ -25,8 +25,10 @@ export interface ISkinParticleSystemProps {
   normalShading: number;
   particleCount: number;
   particleSize: number;
+  proximityMode?: boolean;
   skinColor: string;
   skinOpacity: number;
+  swarmCentroid?: { x: number; y: number; z: number };
   /** Y-plane of the sweep highlight; null/undefined = no highlight active. */
   sweepHighlightY?: number | null;
 }
@@ -49,6 +51,9 @@ function skinUniformHandles() {
     focalPixelScale: { value: 420 },
     sweepHighlightY: { value: -999.0 },
     sweepHighlightActive: { value: 0.0 },
+    proximityMode: { value: 0.0 },
+    swarmCentroid: { value: new Vector3() },
+    proximityRadius: { value: 1.2 },
   };
 }
 
@@ -62,8 +67,10 @@ export default function SkinParticleSystem(props: ISkinParticleSystemProps) {
     normalShading,
     particleCount,
     particleSize,
+    proximityMode = false,
     skinColor,
     skinOpacity,
+    swarmCentroid,
     sweepHighlightY = null,
   } = props;
 
@@ -158,6 +165,15 @@ export default function SkinParticleSystem(props: ISkinParticleSystemProps) {
     uniforms.sweepHighlightY.value = highlightActive ? sweepHighlightY : -999.0;
     uniforms.sweepHighlightActive.value = highlightActive ? 1.0 : 0.0;
 
+    uniforms.proximityMode.value = proximityMode ? 1.0 : 0.0;
+    if (swarmCentroid) {
+      uniforms.swarmCentroid.value.set(
+        swarmCentroid.x,
+        swarmCentroid.y,
+        swarmCentroid.z,
+      );
+    }
+
     const meshPoints = pointsRef.current;
 
     if (meshPoints !== null) {
@@ -197,10 +213,12 @@ uniform float sweepHighlightActive;
 varying vec3 vColor;
 varying float vAlpha;
 varying float vWorldY;
+varying vec3 vWorldPos;
 
 void main() {
   vec4 worldPos = modelMatrix * vec4(position, 1.0);
   vWorldY = worldPos.y;
+  vWorldPos = worldPos.xyz;
 
   vec3 N = normalize(mat3(normalMatrix) * instanceNormal);
   vec3 V = normalize(camWorldPos - worldPos.xyz);
@@ -247,10 +265,14 @@ void main() {
 const FRAG_SHADER = /* glsl */ `
 uniform float sweepHighlightY;
 uniform float sweepHighlightActive;
+uniform float proximityMode;
+uniform vec3 swarmCentroid;
+uniform float proximityRadius;
 
 varying vec3 vColor;
 varying float vAlpha;
 varying float vWorldY;
+varying vec3 vWorldPos;
 
 void main() {
   vec2 c = gl_PointCoord - vec2(0.5);
@@ -265,6 +287,12 @@ void main() {
     finalAlpha = vAlpha * revealEdge;
   } else {
     finalAlpha = vAlpha;
+  }
+
+  if (proximityMode > 0.5) {
+    float dist = length(vWorldPos - swarmCentroid);
+    float proxFade = 1.0 - smoothstep(proximityRadius * 0.3, proximityRadius, dist);
+    finalAlpha *= proxFade;
   }
 
   gl_FragColor = vec4(vColor, finalAlpha * soft);

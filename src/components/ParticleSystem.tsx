@@ -52,6 +52,8 @@ export interface IParticleSystemProps {
     z: number;
     timestamp: number;
   } | null;
+  /** Called each frame with the averaged centroid position of all boids. */
+  onCentroidUpdate?: (pos: { x: number; y: number; z: number }) => void;
 }
 
 const blendingForMode = (mode: TBlendModeKey) => {
@@ -94,6 +96,7 @@ export default function ParticleSystem(props: IParticleSystemProps) {
     attractorBoost = 6,
     pulseTimestamp = 0,
     teleportSignal = null,
+    onCentroidUpdate,
   } = props;
 
   const meshRef = useRef<InstancedMesh>(null);
@@ -282,6 +285,10 @@ export default function ParticleSystem(props: IParticleSystemProps) {
     const arr = mesh.instanceMatrix.array as Float32Array;
     const s = sizeRef.current * 2.5;
 
+    let cx = 0;
+    let cy = 0;
+    let cz = 0;
+
     for (let i = 0; i < count; i += 1) {
       const b = boids[i];
       const off = i * 16;
@@ -291,9 +298,16 @@ export default function ParticleSystem(props: IParticleSystemProps) {
       arr[off + 12] = b.x;
       arr[off + 13] = b.y;
       arr[off + 14] = b.z;
+      cx += b.x;
+      cy += b.y;
+      cz += b.z;
     }
 
     mesh.instanceMatrix.needsUpdate = true;
+
+    if (onCentroidUpdate && count > 0) {
+      onCentroidUpdate({ x: cx / count, y: cy / count, z: cz / count });
+    }
   });
 
   return (

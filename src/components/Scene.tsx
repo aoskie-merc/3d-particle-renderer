@@ -33,6 +33,10 @@ export interface ISceneProps {
   } | null;
   /** Y-plane of the sweep highlight for skin particles; null = inactive. */
   sweepHighlightY?: number | null;
+  /** Callback from ParticleSystem with the current swarm centroid. */
+  onCentroidUpdate?: (pos: { x: number; y: number; z: number }) => void;
+  /** Live swarm centroid passed to SkinParticleSystem for proximity-based opacity. */
+  swarmCentroid?: { x: number; y: number; z: number };
 }
 
 export default function Scene(props: ISceneProps) {
@@ -95,8 +99,10 @@ export default function Scene(props: ISceneProps) {
           normalShading={settings.skinNormalShading}
           particleCount={settings.skinParticleCount}
           particleSize={settings.skinParticleSize}
+          proximityMode={settings.proximityReveal}
           skinColor={settings.skinColor}
           skinOpacity={settings.skinOpacity}
+          swarmCentroid={props.swarmCentroid}
           sweepHighlightY={props.sweepHighlightY}
         />
       ) : null}
@@ -116,6 +122,7 @@ export default function Scene(props: ISceneProps) {
         color={settings.color}
         distribution={settings.distribution}
         geometry={geometry}
+        onCentroidUpdate={props.onCentroidUpdate}
         opacity={settings.opacity}
         particleCount={settings.particleCount}
         particleSize={settings.particleSize}

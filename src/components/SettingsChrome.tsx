@@ -23,6 +23,8 @@ import {
 } from "../utils/skinParticleCountUi";
 
 interface IProps {
+  animDuration: number;
+  onAnimDurationChange: (ms: number) => void;
   onPatch: (patch: Partial<IParticleSettings>) => void;
   panelOpen: boolean;
   resetToDefault: () => void;
@@ -243,6 +245,8 @@ function ToggleGlyph(props: Readonly<{ open: boolean }>): ReactElement {
 
 export default function SettingsChrome(props: Readonly<IProps>): ReactElement {
   const {
+    animDuration,
+    onAnimDurationChange,
     onPatch,
     panelOpen: open,
     resetToDefault,
@@ -473,6 +477,32 @@ export default function SettingsChrome(props: Readonly<IProps>): ReactElement {
                 onPatch({ boidHomeSpring: next });
               }}
             />
+
+            <Checkbox
+              label="Proximity reveal"
+              checked={settings.proximityReveal}
+              onChange={(next: boolean) => {
+                onPatch({ proximityReveal: next });
+              }}
+            />
+
+            <div className={styles.selectRow}>
+              <span className={styles.selectLabel}>Anim duration</span>
+              <select
+                className={styles.selectInput}
+                value={animDuration}
+                onChange={(e: ChangeEvent<HTMLSelectElement>) =>
+                  onAnimDurationChange(Number(e.target.value))
+                }
+              >
+                <option value={500}>0.5s</option>
+                <option value={1000}>1s</option>
+                <option value={1500}>1.5s</option>
+                <option value={2000}>2s</option>
+                <option value={2500}>2.5s</option>
+                <option value={3000}>3s</option>
+              </select>
+            </div>
           </Section>
 
           <Section

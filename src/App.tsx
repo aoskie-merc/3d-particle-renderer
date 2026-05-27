@@ -53,6 +53,25 @@ export default function App() {
     return () => cancelScheduledPersistHydratedAppState();
   }, [appearance, particleColorFollowsTheme, settings]);
 
+  // ── Swarm centroid (updated per-frame from ParticleSystem) ──
+  const swarmCentroidRef = useRef({ x: 0, y: 0, z: 0 });
+  const [swarmCentroid, setSwarmCentroid] = useState({ x: 0, y: 0, z: 0 });
+  const centroidFrameCount = useRef(0);
+  const handleCentroidUpdate = useCallback(
+    (pos: { x: number; y: number; z: number }) => {
+      swarmCentroidRef.current = pos;
+      // Throttle state updates to every 3 frames to avoid excessive re-renders
+      centroidFrameCount.current += 1;
+      if (centroidFrameCount.current % 3 === 0) {
+        setSwarmCentroid(pos);
+      }
+    },
+    [],
+  );
+
+  const proximityRevealRef = useRef(settings.proximityReveal);
+  proximityRevealRef.current = settings.proximityReveal;
+
   // ── Trigger animation state ──
   const [triggerPhase, setTriggerPhase] = useState<TTriggerPhase>("idle");
   const [sweepY, setSweepY] = useState<number | null>(null);
@@ -83,27 +102,63 @@ export default function App() {
       if (trigger === "sweep-up") {
         setTriggerPhase("sweep-up");
 
-        const sweepBottom = -1.5;
-        const sweepTop = 1.5;
+        const modelBottom = -1.2;
+        const modelTop = 1.4;
+        const loopOutX = 2.8;
+        const loopOutZ = 1.5;
+        const loopOutY = -0.5;
         const holdDuration = 300;
 
-        setSweepY(sweepBottom);
-        setAttractorOverride({ x: 0, y: sweepBottom, z: 0 });
-        setAttractorBoost(8);
+        // Phase split: 35% looping out, 65% sweeping across
+        const loopFraction = 0.35;
+
+        setSweepY(null);
+        setAttractorOverride({ x: 0, y: modelBottom, z: 0 });
+        setAttractorBoost(10);
 
         const startTime = performance.now();
 
         function animateSweep(now: number) {
           const elapsed = now - startTime;
+          const totalDuration = animDurationMs;
 
-          if (elapsed < animDurationMs) {
-            const t = elapsed / animDurationMs;
-            const eased = t * t * (3 - 2 * t);
-            const y = sweepBottom + (sweepTop - sweepBottom) * eased;
-            setSweepY(y);
-            setAttractorOverride({ x: 0, y, z: 0 });
+          if (elapsed < totalDuration) {
+            const t = elapsed / totalDuration;
+
+            let x: number;
+            let y: number;
+            let z: number;
+
+            if (t < loopFraction) {
+              // Phase 1: Loop outward from below model to the side
+              const lt = t / loopFraction;
+              const eased = lt * lt * (3 - 2 * lt);
+              // Arc out: quarter-circle from bottom-center to side
+              const angle = -Math.PI / 2 + eased * (Math.PI / 2);
+              x = loopOutX * Math.cos(angle - Math.PI / 2) * eased;
+              z = loopOutZ * eased * Math.sin(angle);
+              y = modelBottom + (loopOutY - modelBottom) * eased;
+              // No skin reveal during loop-out
+              setSweepY(null);
+            } else {
+              // Phase 2: Sweep back across model bottom-to-top
+              const st = (t - loopFraction) / (1 - loopFraction);
+              const eased = st * st * (3 - 2 * st);
+              // Arc back from side to center while rising
+              const returnEase = 1 - Math.pow(1 - st, 2);
+              x = loopOutX * (1 - returnEase);
+              z = loopOutZ * (1 - returnEase) * 0.5;
+              y = modelBottom + (modelTop - modelBottom) * eased;
+              // When proximity reveal is on, the centroid handles skin reveal;
+              // otherwise use the Y-plane sweep
+              if (!proximityRevealRef.current) {
+                setSweepY(y);
+              }
+            }
+
+            setAttractorOverride({ x, y, z });
             animRafRef.current = requestAnimationFrame(animateSweep);
-          } else if (elapsed < animDurationMs + holdDuration) {
+          } else if (elapsed < totalDuration + holdDuration) {
             animRafRef.current = requestAnimationFrame(animateSweep);
           } else {
             setSweepY(null);
@@ -156,7 +211,7 @@ export default function App() {
         setSweepY(null);
 
         setAttractorOverride({ x: 0, y: ENTER_EXIT_FAR_Y, z: 0 });
-        setAttractorBoost(6);
+        setAttractorBoost(20);
 
         const startTime = performance.now();
 
@@ -164,12 +219,12 @@ export default function App() {
           const elapsed = now - startTime;
           if (elapsed < animDurationMs) {
             const t = elapsed / animDurationMs;
-            const boost = 6 + 10 * (t * t);
+            const boost = 20 + 12 * t;
             setAttractorBoost(boost);
             animRafRef.current = requestAnimationFrame(animateExit);
           } else {
             setAttractorOverride({ x: 0, y: ENTER_EXIT_FAR_Y, z: 0 });
-            setAttractorBoost(16);
+            setAttractorBoost(32);
             setTriggerPhase("hidden");
           }
         }
@@ -278,7 +333,9 @@ export default function App() {
             attractorBoost={attractorBoost}
             attractorOverride={attractorOverride}
             geometry={geometry}
+            onCentroidUpdate={handleCentroidUpdate}
             settings={settings}
+            swarmCentroid={swarmCentroid}
             sweepHighlightY={sweepY}
             teleportSignal={teleportSignal}
           />

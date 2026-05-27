@@ -50,6 +50,9 @@ export interface IParticleSettings {
   swarmSplitIntensity: number;
   swarmSplitSpeed: number;
 
+  /** When enabled, skin opacity is driven by proximity to the swarm centroid. */
+  proximityReveal: boolean;
+
   /** Base model particle skin replaces wire shell when enabled. */
   skinEnabled: boolean;
   skinParticleCount: number;
@@ -94,6 +97,7 @@ export const PARTICLE_SETTINGS_DEFAULTS: IParticleSettings = {
   swarmOrbitRadius: BOID_DEFAULTS.orbitRadius,
   swarmSplitIntensity: BOID_DEFAULTS.splitIntensity,
   swarmSplitSpeed: BOID_DEFAULTS.splitSpeed,
+  proximityReveal: false,
   skinEnabled: true,
   skinParticleCount: 135_936,
   skinParticleSize: 0.0055,
