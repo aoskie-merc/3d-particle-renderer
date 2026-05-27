@@ -341,7 +341,7 @@ export default function SettingsChrome(props: Readonly<IProps>): ReactElement {
 
             <Slider
               label="Dot size"
-              max={0.06}
+              max={0.12}
               min={0.001}
               step={0.0005}
               value={settings.particleSize}

@@ -119,7 +119,7 @@ function mergeParticleSettingsStored(raw: unknown): IParticleSettings {
         ? record.particleCount
         : Number(record.particleCount) || d.particleCount,
     ),
-    particleSize: num(record.particleSize, d.particleSize, 0.0005, 0.1),
+    particleSize: num(record.particleSize, d.particleSize, 0.0005, 0.2),
     showWireframe:
       typeof record.showWireframe === "boolean"
         ? record.showWireframe

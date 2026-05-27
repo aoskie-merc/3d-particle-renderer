@@ -91,6 +91,7 @@ export default function Scene(props: ISceneProps) {
           contourDensity={settings.skinContourDensity}
           depthFade={settings.skinDepthFade}
           geometry={geometry}
+          isDarkMode={appearance === "dark"}
           normalShading={settings.skinNormalShading}
           particleCount={settings.skinParticleCount}
           particleSize={settings.skinParticleSize}

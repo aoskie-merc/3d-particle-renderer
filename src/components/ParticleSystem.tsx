@@ -155,7 +155,9 @@ export default function ParticleSystem(props: IParticleSystemProps) {
       attractorFactor: attractorOverride
         ? BOID_DEFAULTS.attractorFactor * attractorBoost
         : BOID_DEFAULTS.attractorFactor,
-      homeSpringFactor: attractorOverride ? 0 : boidHomeSpring,
+      homeSpringFactor: attractorOverride
+        ? boidHomeSpring * 0.05
+        : boidHomeSpring,
       maxHomeDistance: BOID_DEFAULTS.maxHomeDistance,
       speedLimit: boidSpeedLimit,
       minSpeed: boidSpeedLimit * 0.32,
@@ -228,7 +230,7 @@ export default function ParticleSystem(props: IParticleSystemProps) {
 
     const arr = mesh.instanceMatrix.array as Float32Array;
     const boids = boidsRef.current;
-    const s = particleSize * 5.0;
+    const s = particleSize * 2.5;
 
     for (let i = 0; i < count; i += 1) {
       const b = boids[i];
@@ -278,7 +280,7 @@ export default function ParticleSystem(props: IParticleSystemProps) {
     }
 
     const arr = mesh.instanceMatrix.array as Float32Array;
-    const s = sizeRef.current * 5.0;
+    const s = sizeRef.current * 2.5;
 
     for (let i = 0; i < count; i += 1) {
       const b = boids[i];

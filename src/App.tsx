@@ -87,7 +87,7 @@ export default function App() {
       if (trigger === "sweep-up") {
         setTriggerPhase("sweep-up");
         setSweepY(SWEEP_BOTTOM);
-        setAttractorOverride({ x: 0, y: SWEEP_BOTTOM, z: 0 });
+        setAttractorOverride(null);
         setAttractorBoost(undefined);
 
         const startTime = performance.now();
@@ -100,7 +100,6 @@ export default function App() {
             const eased = t * t * (3 - 2 * t);
             const y = SWEEP_BOTTOM + (SWEEP_TOP - SWEEP_BOTTOM) * eased;
             setSweepY(y);
-            setAttractorOverride({ x: 0, y, z: 0 });
             animRafRef.current = requestAnimationFrame(animateSweep);
           } else {
             const fadeElapsed = elapsed - animDurationMs;
@@ -110,11 +109,9 @@ export default function App() {
               const fadeEased = fadeT * fadeT;
               const y = SWEEP_TOP + fadeEased * 1.0;
               setSweepY(y);
-              setAttractorOverride({ x: 0, y, z: 0 });
               animRafRef.current = requestAnimationFrame(animateSweep);
             } else {
               setSweepY(null);
-              setAttractorOverride(null);
               setTriggerPhase("idle");
             }
           }
@@ -127,14 +124,16 @@ export default function App() {
       if (trigger === "enter") {
         setTriggerPhase("enter");
         setSweepY(null);
-        setAttractorBoost(8);
+
         setTeleportSignal({
           x: 0,
           y: ENTER_EXIT_FAR_Y,
           z: 0,
           timestamp: performance.now(),
         });
-        setAttractorOverride({ x: 0, y: ENTER_EXIT_FAR_Y, z: 0 });
+
+        setAttractorOverride({ x: 0, y: 0, z: 0 });
+        setAttractorBoost(12);
 
         const startTime = performance.now();
 
@@ -142,9 +141,8 @@ export default function App() {
           const elapsed = now - startTime;
           if (elapsed < animDurationMs) {
             const t = elapsed / animDurationMs;
-            const eased = t * t * (3 - 2 * t);
-            const y = ENTER_EXIT_FAR_Y + (0 - ENTER_EXIT_FAR_Y) * eased;
-            setAttractorOverride({ x: 0, y, z: 0 });
+            const boost = 12 * (1 - t * t);
+            setAttractorBoost(Math.max(1, boost));
             animRafRef.current = requestAnimationFrame(animateEnter);
           } else {
             setAttractorOverride(null);
@@ -160,8 +158,9 @@ export default function App() {
       if (trigger === "exit") {
         setTriggerPhase("exit");
         setSweepY(null);
-        setAttractorBoost(14);
-        setAttractorOverride({ x: 0, y: 0, z: 0 });
+
+        setAttractorOverride({ x: 0, y: ENTER_EXIT_FAR_Y, z: 0 });
+        setAttractorBoost(6);
 
         const startTime = performance.now();
 
@@ -169,12 +168,12 @@ export default function App() {
           const elapsed = now - startTime;
           if (elapsed < animDurationMs) {
             const t = elapsed / animDurationMs;
-            const eased = t * t * (3 - 2 * t);
-            const y = 0 + (ENTER_EXIT_FAR_Y - 0) * eased;
-            setAttractorOverride({ x: 0, y, z: 0 });
+            const boost = 6 + 10 * (t * t);
+            setAttractorBoost(boost);
             animRafRef.current = requestAnimationFrame(animateExit);
           } else {
             setAttractorOverride({ x: 0, y: ENTER_EXIT_FAR_Y, z: 0 });
+            setAttractorBoost(16);
             setTriggerPhase("hidden");
           }
         }

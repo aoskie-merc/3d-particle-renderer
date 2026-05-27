@@ -21,6 +21,7 @@ export interface ISkinParticleSystemProps {
   contourDensity: number;
   depthFade: number;
   geometry: BufferGeometry;
+  isDarkMode: boolean;
   normalShading: number;
   particleCount: number;
   particleSize: number;
@@ -36,6 +37,7 @@ const LIGHT_WORLD_DIR = new Vector3(0.5, 0.8, 0.35).normalize();
 function skinUniformHandles() {
   return {
     camWorldPos: { value: new Vector3() },
+    isDarkMode: { value: 0.0 },
     lightWorldDir: { value: LIGHT_WORLD_DIR.clone() },
     skinBaseRgb: { value: new Vector3(1, 1, 1) },
     skinOpacity: { value: 1 },
@@ -56,6 +58,7 @@ export default function SkinParticleSystem(props: ISkinParticleSystemProps) {
     contourDensity,
     depthFade,
     geometry,
+    isDarkMode,
     normalShading,
     particleCount,
     particleSize,
@@ -133,6 +136,7 @@ export default function SkinParticleSystem(props: ISkinParticleSystemProps) {
     const uniforms = skinGpu.uniforms;
 
     uniforms.depthSpanHint.value = depthSpanHintDerived;
+    uniforms.isDarkMode.value = isDarkMode ? 1.0 : 0.0;
 
     uniforms.skinBaseRgb.value.set(tintColor.r, tintColor.g, tintColor.b);
 
@@ -147,7 +151,7 @@ export default function SkinParticleSystem(props: ISkinParticleSystemProps) {
     uniforms.skinNormalShading.value = normalShading;
     uniforms.skinDepthFade.value = depthFade;
     uniforms.skinContourDensity.value = contourDensity;
-    uniforms.particleWorldRadius.value = particleSize * 8.0;
+    uniforms.particleWorldRadius.value = particleSize * 5.0;
     uniforms.lightWorldDir.value.copy(LIGHT_WORLD_DIR);
 
     const highlightActive = sweepHighlightY !== null;
@@ -177,6 +181,7 @@ const VERT_SHADER = /* glsl */ `
 attribute vec3 instanceNormal;
 
 uniform vec3 camWorldPos;
+uniform float isDarkMode;
 uniform vec3 lightWorldDir;
 uniform vec3 skinBaseRgb;
 uniform float skinOpacity;
@@ -209,16 +214,19 @@ void main() {
 
   float dist = length(camWorldPos - worldPos.xyz);
   float nDist = clamp(dist / depthSpanHint, 0.0, 1.0);
-  float depthOpacityMul = clamp(1.0 - skinDepthFade * nDist, 0.0, 1.0);
+  float effectiveDepthFade = skinDepthFade * mix(1.0, 0.5, isDarkMode);
+  float depthOpacityMul = clamp(1.0 - effectiveDepthFade * nDist, 0.0, 1.0);
 
-  float contourGlow = pow(edge, 2.05);
+  float contourPow = mix(2.05, 1.5, isDarkMode);
+  float contourGlow = pow(edge, contourPow);
   float contourAmp = mix(1.0, 1.0 + contourGlow * 0.62, clamp(skinContourDensity, 0.0, 1.0));
   float radialSize =
     particleWorldRadius
     * (1.0 - 0.3 * skinDepthFade * nDist)
     * mix(1.0, 1.0 + edge * 0.42, clamp(skinContourDensity, 0.0, 1.0));
 
-  float litBoost = pow(mix(0.38, 1.0, NdL), mix(1.5, 0.86, clamp(skinNormalShading, 0.0, 1.0)));
+  float litFloor = mix(0.38, 0.55, isDarkMode);
+  float litBoost = pow(mix(litFloor, 1.0, NdL), mix(1.5, 0.86, clamp(skinNormalShading, 0.0, 1.0)));
   litBoost *= mix(1.0, 0.5 + depthOpacityMul * 0.76, clamp(skinDepthFade, 0.0, 1.0));
   litBoost *= contourAmp;
 
@@ -232,7 +240,7 @@ void main() {
 
   gl_Position = projectionMatrix * mvPosition;
   float invZ = max(0.002, -mvPosition.z);
-  gl_PointSize = clamp(radialSize * focalPixelScale / invZ, 1.0, 64.0);
+  gl_PointSize = clamp(radialSize * focalPixelScale / invZ, 2.0, 64.0);
 }
 `;
 
