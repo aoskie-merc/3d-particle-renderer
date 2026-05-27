@@ -23,7 +23,7 @@ export interface IBoidParams {
   noiseMagnitude: number;
   /** Attractor orbit speed multiplier. */
   orbitSpeed: number;
-  /** Attractor orbit radius (how far from center the attractor swings). */
+  /** Attractor angular amplitude: 0 = stationary on surface, 1 = full hemisphere sweep. */
   orbitRadius: number;
   /** Split pulse intensity (0 = disabled, 1 = dramatic). */
   splitIntensity: number;
@@ -42,10 +42,10 @@ export const BOID_DEFAULTS: Readonly<IBoidParams> = {
   separationDist: 0.03,
   separationFactor: 0.04,
   alignmentFactor: 0.045,
-  cohesionFactor: 0.0016,
+  cohesionFactor: 0.003,
   attractorFactor: 0.0003,
   homeSpringFactor: 0.0005,
-  maxHomeDistance: 0.4,
+  maxHomeDistance: 0.3,
   speedLimit: 0.005,
   minSpeed: 0.002,
   noiseMagnitude: 0.0006,

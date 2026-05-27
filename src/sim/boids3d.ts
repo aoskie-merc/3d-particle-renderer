@@ -254,21 +254,29 @@ export function stepBoids(
   const headY = flockVY / flockSpeed;
   const headZ = flockVZ / flockSpeed;
 
-  // --- Attractor: large sweeping arcs (low-frequency Lissajous + drift) ---
+  // --- Attractor: sweeps along the model surface, not near the origin ---
+  // The attractor traces a path on a sphere slightly outside the mesh surface.
+  // orbitRadius controls angular amplitude: 0 = stationary, 1 = full hemisphere.
+  const SURFACE_R = 0.9; // must match CANONICAL_MESH_RADIUS
+  const ATTRACTOR_HOVER = 1.15;
   const t = elapsed * orbitSpeed;
-  const r = orbitRadius;
-  const attractX =
-    Math.sin(t * 0.14) * 0.6 * r +
-    Math.sin(t * 0.07 + 2.1) * 0.3 * r +
-    Math.sin(t * 0.23 + 0.8) * 0.1 * r;
-  const attractY =
-    Math.cos(t * 0.11) * 0.5 * r +
-    Math.sin(t * 0.06 + 1.3) * 0.25 * r +
-    Math.cos(t * 0.19 + 1.7) * 0.08 * r;
-  const attractZ =
-    Math.sin(t * 0.13 + 1.0) * 0.55 * r +
-    Math.cos(t * 0.08 + 0.5) * 0.28 * r +
-    Math.sin(t * 0.21 + 2.5) * 0.09 * r;
+  const angularAmp = orbitRadius * (Math.PI / 2);
+
+  const theta =
+    Math.sin(t * 0.14) * 0.6 * angularAmp +
+    Math.sin(t * 0.07 + 2.1) * 0.3 * angularAmp +
+    Math.sin(t * 0.23 + 0.8) * 0.1 * angularAmp;
+  const phi =
+    Math.PI * 0.5 +
+    Math.cos(t * 0.11) * 0.5 * angularAmp +
+    Math.sin(t * 0.06 + 1.3) * 0.25 * angularAmp +
+    Math.cos(t * 0.19 + 1.7) * 0.08 * angularAmp;
+
+  const attractDist = SURFACE_R * ATTRACTOR_HOVER;
+  const sinPhi = Math.sin(phi);
+  const attractX = attractDist * sinPhi * Math.cos(theta);
+  const attractY = attractDist * Math.cos(phi);
+  const attractZ = attractDist * sinPhi * Math.sin(theta);
 
   // --- Split pulse along flock heading perpendicular ---
   // 3 overlapping frequencies with power-8 for wider sustained peaks (matches 2D prototype)
