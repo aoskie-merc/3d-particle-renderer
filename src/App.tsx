@@ -175,7 +175,7 @@ export default function App() {
 
   return (
     <main aria-label="Particle workspace" className="viewport" tabIndex={-1}>
-      <ThemeToggle appearance={appearance} setAppearance={setAppearance} />
+      <ThemeToggle appearance={appearance} hidden={sidebarOpen} setAppearance={setAppearance} />
 
       <TriggerBar phase={triggerPhase} onTrigger={handleTrigger} />
 

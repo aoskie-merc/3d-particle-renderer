@@ -9,12 +9,15 @@ import type { TMercuryAppearance } from '../theme';
 
 interface IThemeToggleProps {
   appearance: TMercuryAppearance;
+  hidden?: boolean;
   setAppearance: Dispatch<SetStateAction<TMercuryAppearance>>;
 }
 
 /** Moon while dark canvas (switch to light); sun while light canvas (switch to dark). */
 export default function ThemeToggle(props: Readonly<IThemeToggleProps>) {
-  const { appearance, setAppearance } = props;
+  const { appearance, hidden = false, setAppearance } = props;
+
+  if (hidden) return null;
 
   const flip = (): void =>
     setAppearance((prior) => (prior === 'dark' ? 'light' : 'dark'));

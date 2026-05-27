@@ -11,7 +11,7 @@ import type {
 import { useCallback, useEffect, useRef, useState } from "react";
 
 import { FontAwesomeIcon } from "@fortawesome/react-fontawesome";
-import { faSliders } from "@fortawesome/free-solid-svg-icons";
+import { faSliders, faXmark } from "@fortawesome/free-solid-svg-icons";
 
 import type { IParticleSettings } from "../particleSettings";
 
@@ -232,8 +232,13 @@ function Checkbox(
   );
 }
 
-function GearGlyph(): ReactElement {
-  return <FontAwesomeIcon icon={faSliders} className={styles.gearChar} />;
+function ToggleGlyph(props: Readonly<{ open: boolean }>): ReactElement {
+  return (
+    <FontAwesomeIcon
+      icon={props.open ? faXmark : faSliders}
+      className={styles.gearChar}
+    />
+  );
 }
 
 export default function SettingsChrome(props: Readonly<IProps>): ReactElement {
@@ -290,8 +295,8 @@ export default function SettingsChrome(props: Readonly<IProps>): ReactElement {
         type="button"
         onClick={() => setOpen((previous) => !previous)}
       >
-        <GearGlyph />
-        <span className={styles.sr}>Open settings sidebar</span>
+        <ToggleGlyph open={open} />
+        <span className={styles.sr}>{open ? 'Close' : 'Open'} settings sidebar</span>
       </button>
 
       <button
@@ -312,15 +317,6 @@ export default function SettingsChrome(props: Readonly<IProps>): ReactElement {
             <p className={styles.sheetKicker}>3D Particle Renderer</p>
             <p className={styles.sheetTitle}>Parameters</p>
           </div>
-          <button
-            className={styles.iconClose}
-            title="Collapse panel"
-            type="button"
-            onClick={() => setOpen(false)}
-          >
-            <span aria-hidden>×</span>
-            <span className={styles.sr}>Collapse settings panel</span>
-          </button>
         </header>
 
         <div className={styles.sheetBody}>
