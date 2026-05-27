@@ -271,10 +271,12 @@ export function stepBoids(
     Math.sin(t * 0.15 + 2.5) * 0.09 * r;
 
   // --- Split pulse along flock heading perpendicular ---
+  // 3 overlapping frequencies with power-8 for wider sustained peaks (matches 2D prototype)
   const st = elapsed * splitSpeed;
-  const pulse1 = Math.pow(Math.max(0, Math.sin(st * 0.3)), 12);
-  const pulse2 = Math.pow(Math.max(0, Math.sin(st * 0.19 + 1.5)), 12);
-  const autoSplit = Math.max(pulse1, pulse2) * splitIntensity;
+  const pulse1 = Math.pow(Math.max(0, Math.sin(st * 0.8)), 8);
+  const pulse2 = Math.pow(Math.max(0, Math.sin(st * 0.55 + 1.5)), 8);
+  const pulse3 = Math.pow(Math.max(0, Math.sin(st * 0.35 + 3.0)), 8);
+  const autoSplit = Math.max(pulse1, pulse2, pulse3) * splitIntensity * 0.9;
 
   // Split plane perpendicular to flock heading
   let perpX: number;
@@ -294,7 +296,7 @@ export function stepBoids(
   perpY /= perpLen;
   perpZ /= perpLen;
 
-  const splitRot = st * 0.15 + Math.sin(st * 0.07) * 0.5;
+  const splitRot = st * 0.2 + Math.sin(st * 0.13) * 0.8;
   const cosR = Math.cos(splitRot);
   const sinR = Math.sin(splitRot);
   const p2X = headY * perpZ - headZ * perpY;
