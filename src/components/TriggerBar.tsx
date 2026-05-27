@@ -17,19 +17,19 @@ export default function TriggerBar(props: ITriggerBarProps) {
       <p className={styles.header}>States</p>
       <button
         type="button"
-        className={`${styles.dsBtn}${animating ? ` ${styles.dsBtnActive}` : ""}`}
-        disabled={animating || phase === "hidden"}
-        onClick={() => onTrigger("sweep-up")}
-      >
-        Sweep up
-      </button>
-      <button
-        type="button"
         className={`${styles.dsBtn}${phase === "enter" ? ` ${styles.dsBtnActive}` : ""}`}
         disabled={animating}
         onClick={() => onTrigger("enter")}
       >
         Enter
+      </button>
+      <button
+        type="button"
+        className={`${styles.dsBtn}${animating ? ` ${styles.dsBtnActive}` : ""}`}
+        disabled={animating || phase === "hidden"}
+        onClick={() => onTrigger("sweep-up")}
+      >
+        Sweep up
       </button>
       <button
         type="button"
