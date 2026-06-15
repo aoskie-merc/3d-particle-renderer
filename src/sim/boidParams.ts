@@ -35,27 +35,37 @@ export interface IBoidParams {
   steeringInertia: number;
   /** Elongation bias along the flock's travel direction. */
   velocityStretchFactor: number;
+  /** Tangential force making particles orbit/swirl around the model center. */
+  swirlStrength: number;
   /** When set, replaces the Lissajous orbit attractor with a fixed world-space position. */
   attractorOverride?: { x: number; y: number; z: number } | null;
+  /** When > 0, uses a shell attractor that pulls particles to this radius from attractorOverride center. */
+  shellAttractorRadius: number;
+  /** Multiplier applied on top of attractorFactor when override is active. */
+  attractorBoost?: number;
+  /** Time elapsed since the shell attractor was last activated (seconds). Resets on each activation so the tumbling axis starts from a consistent phase instead of wherever the global clock happens to be. */
+  shellElapsed?: number;
 }
 
 export const BOID_DEFAULTS: Readonly<IBoidParams> = {
   visualRange: 0.095,
   separationDist: 0.02,
-  separationFactor: 0.008,
-  alignmentFactor: 0.04,
-  cohesionFactor: 0.002,
+  separationFactor: 0.012,
+  alignmentFactor: 0.022,
+  cohesionFactor: 0.0006,
   attractorFactor: 0.0003,
   homeSpringFactor: 0.0002,
   maxHomeDistance: 0.3,
   speedLimit: 0.006,
   minSpeed: 0.0024,
-  noiseMagnitude: 0.0002,
+  noiseMagnitude: 0.0003,
   orbitSpeed: 0.15,
   orbitRadius: 1.3,
-  splitIntensity: 0.15,
+  splitIntensity: 0.25,
   splitSpeed: 2.55,
   splitDecay: 3.0,
-  steeringInertia: 0.82,
-  velocityStretchFactor: 0.015,
+  steeringInertia: 0.76,
+  swirlStrength: 0.003,
+  velocityStretchFactor: 0.01,
+  shellAttractorRadius: 0,
 };

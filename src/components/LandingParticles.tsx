@@ -19,7 +19,6 @@ import { mercuryDefaultParticleHex } from "../theme";
 
 import styles from "./LandingParticles.module.css";
 
-const ACTIVE_COUNT = 120;
 const BASE_ALPHA = 0.72;
 const INNER_REVEAL_PX = 14;
 const TWO_PI = Math.PI * 2;

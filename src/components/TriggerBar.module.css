@@ -74,6 +74,47 @@
     0 0 0 3px var(--app-ds-focus-ring-outer);
 }
 
+.pathToggle {
+  display: flex;
+  gap: 3px;
+  background: var(--app-ds-btn-secondary-bg);
+  border-radius: 20px;
+  padding: 3px;
+}
+
+.pathBtn {
+  flex: 1;
+  cursor: pointer;
+  border: none;
+  border-radius: 16px;
+  padding: 4px 10px;
+  font-family: inherit;
+  font-size: 0.75rem;
+  font-weight: 600;
+  letter-spacing: 0.01em;
+  color: var(--app-text-muted);
+  background: transparent;
+  transition:
+    background-color 0.15s ease,
+    color 0.15s ease;
+}
+
+.pathBtn:hover {
+  color: var(--app-ds-btn-secondary-text-hover);
+}
+
+.pathBtnActive {
+  background-color: var(--app-ds-icon-btn-active-bg);
+  color: var(--app-ds-btn-secondary-text-hover);
+}
+
+.divider {
+  border: none;
+  border-top: 1px solid var(--app-text-muted);
+  opacity: 0.2;
+  margin: 2px 0;
+}
+
 @media (prefers-reduced-motion: reduce) {
   .dsBtn {
     transition: none;

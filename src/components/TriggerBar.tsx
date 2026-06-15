@@ -1,43 +1,58 @@
 import styles from "./TriggerBar.module.css";
 
-export type TTriggerPhase = "idle" | "sweep-up" | "enter" | "exit" | "hidden";
+export type TTriggerPhase = "initial" | "enter" | "peek" | "formed" | "exit";
 
 export interface ITriggerBarProps {
-  phase: TTriggerPhase;
+  triggerPhase: TTriggerPhase;
   onTrigger: (trigger: TTriggerPhase) => void;
+  animPath: "statue" | "orb";
+  onPathChange: (path: "statue" | "orb") => void;
 }
 
+const STEPS: Array<{ id: TTriggerPhase; label: string }> = [
+  { id: "initial", label: "Initial" },
+  { id: "enter", label: "Enter" },
+  { id: "peek", label: "Peek" },
+  { id: "formed", label: "Formed" },
+  { id: "exit", label: "Exit" },
+];
+
 export default function TriggerBar(props: ITriggerBarProps) {
-  const { phase, onTrigger } = props;
-  const animating =
-    phase === "sweep-up" || phase === "enter" || phase === "exit";
+  const { triggerPhase, onTrigger, animPath, onPathChange } = props;
 
   return (
     <nav className={styles.card} aria-label="Animation triggers">
       <p className={styles.header}>States</p>
-      <button
-        type="button"
-        className={`${styles.dsBtn}${phase === "enter" ? ` ${styles.dsBtnActive}` : ""}`}
-        disabled={animating}
-        onClick={() => onTrigger("enter")}
-      >
-        Enter
-      </button>
-      <button
-        type="button"
-        className={`${styles.dsBtn}${animating ? ` ${styles.dsBtnActive}` : ""}`}
-        disabled={animating || phase === "hidden"}
-        onClick={() => onTrigger("sweep-up")}
-      >
-        Sweep up
-      </button>
-      <button
-        type="button"
-        className={`${styles.dsBtn}${phase === "exit" ? ` ${styles.dsBtnActive}` : ""}`}
-        disabled={animating || phase === "hidden"}
-        onClick={() => onTrigger("exit")}
-      >
-        Exit
+      <div className={styles.pathToggle}>
+        <button
+          type="button"
+          className={`${styles.pathBtn}${animPath === "statue" ? ` ${styles.pathBtnActive}` : ""}`}
+          onClick={() => onPathChange("statue")}
+        >
+          Peek
+        </button>
+        <button
+          type="button"
+          className={`${styles.pathBtn}${animPath === "orb" ? ` ${styles.pathBtnActive}` : ""}`}
+          onClick={() => onPathChange("orb")}
+        >
+          Orb
+        </button>
+      </div>
+      {STEPS.map((step) => (
+        <button
+          key={step.id}
+          type="button"
+          className={`${styles.dsBtn}${triggerPhase === step.id ? ` ${styles.dsBtnActive}` : ""}`}
+          onClick={() => onTrigger(step.id)}
+          disabled={step.id === "peek" && animPath === "orb"}
+        >
+          {step.label}
+        </button>
+      ))}
+      <hr className={styles.divider} />
+      <button type="button" className={styles.dsBtn} onClick={() => {}}>
+        Play full sequence
       </button>
     </nav>
   );

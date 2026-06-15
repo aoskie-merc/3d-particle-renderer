@@ -22,10 +22,13 @@ export const STORAGE_KEY_COLOR_OVERRIDDEN =
 
 export const STORAGE_KEY_CUSTOM_DEFAULTS = "3d-particle-mapper-custom-defaults";
 
+export const STORAGE_KEY_ANIM_PATH = "3d-particle-mapper-anim-path";
+
 export interface IHydratedAppState {
   appearance: TMercuryAppearance;
   particleColorFollowsTheme: boolean;
   settings: IParticleSettings;
+  animPath: "statue" | "orb";
 }
 
 let persistTimer: ReturnType<typeof setTimeout> | undefined;
@@ -78,6 +81,14 @@ function mergeParticleSettingsStored(raw: unknown): IParticleSettings {
     candidate === "radial" ||
     candidate === "tangential" ||
     candidate === "random"
+      ? candidate
+      : fallback;
+
+  const pickEnterSwarmMode = (
+    candidate: unknown,
+    fallback: IParticleSettings["enterSwarmMode"],
+  ): IParticleSettings["enterSwarmMode"] =>
+    candidate === "murmur" || candidate === "orbit" || candidate === "drift"
       ? candidate
       : fallback;
 
@@ -171,6 +182,12 @@ function mergeParticleSettingsStored(raw: unknown): IParticleSettings {
     boidNoise: num(record.boidNoise, d.boidNoise, 0, 0.01),
     swarmOrbitSpeed: num(record.swarmOrbitSpeed, d.swarmOrbitSpeed, 0.1, 5),
     swarmOrbitRadius: num(record.swarmOrbitRadius, d.swarmOrbitRadius, 0.5, 6),
+    swarmSwirlStrength: num(
+      record.swarmSwirlStrength,
+      d.swarmSwirlStrength,
+      0,
+      0.02,
+    ),
     swarmSplitIntensity: num(
       record.swarmSplitIntensity,
       d.swarmSplitIntensity,
@@ -182,6 +199,9 @@ function mergeParticleSettingsStored(raw: unknown): IParticleSettings {
       typeof record.proximityReveal === "boolean"
         ? record.proximityReveal
         : d.proximityReveal,
+    proximityRadius: num(record.proximityRadius, d.proximityRadius, 0.1, 4.0),
+    orbRadius: num(record.orbRadius, d.orbRadius, 0.2, 0.3),
+    enterSwarmMode: pickEnterSwarmMode(record.enterSwarmMode, d.enterSwarmMode),
     skinEnabled:
       typeof record.skinEnabled === "boolean"
         ? record.skinEnabled
@@ -248,7 +268,15 @@ export function loadHydratedAppState(): IHydratedAppState {
     settings.skinColor = themeParticles;
   }
 
-  return { appearance, particleColorFollowsTheme, settings };
+  let animPath: "statue" | "orb" = "statue";
+  try {
+    const raw = window.localStorage.getItem(STORAGE_KEY_ANIM_PATH);
+    if (raw === "statue" || raw === "orb") animPath = raw;
+  } catch {
+    /* noop */
+  }
+
+  return { appearance, particleColorFollowsTheme, settings, animPath };
 }
 
 function writePersist(state: IHydratedAppState): void {
@@ -262,6 +290,7 @@ function writePersist(state: IHydratedAppState): void {
       STORAGE_KEY_SETTINGS,
       JSON.stringify(state.settings),
     );
+    window.localStorage.setItem(STORAGE_KEY_ANIM_PATH, state.animPath);
   } catch {
     /* quota / blocked */
   }

@@ -37,6 +37,7 @@ export interface IParticleSystemProps {
   boidNoise: number;
   swarmOrbitSpeed: number;
   swarmOrbitRadius: number;
+  swarmSwirlStrength: number;
   swarmSplitIntensity: number;
   swarmSplitSpeed: number;
   /** External pulse timestamp — triggers an extra split burst (e.g. verification check complete) */
@@ -45,15 +46,44 @@ export interface IParticleSystemProps {
   attractorOverride?: { x: number; y: number; z: number } | null;
   /** Multiplier for attractorFactor when attractorOverride is active. Defaults to 6. */
   attractorBoost?: number;
+  /** When set, overrides homeSpringFactor (used to snap particles to surface after enter). */
+  homeSpringOverride?: number;
   /** When timestamp changes, teleport all boids to the given position with random scatter. */
   teleportSignal?: {
     x: number;
     y: number;
     z: number;
     timestamp: number;
+    scatterX?: number;
+    scatterY?: number;
+    nearFraction?: number;
+    nearZMin?: number;
+    nearZMax?: number;
+    farZMin?: number;
+    farZMax?: number;
   } | null;
+  /** When value changes, zero all boid velocities (used after enter animation ends). */
+  resetVelocitiesSignal?: number;
   /** Called each frame with the averaged centroid position of all boids. */
   onCentroidUpdate?: (pos: { x: number; y: number; z: number }) => void;
+  /** Multiplier applied to the boid speed limit (e.g. 0.5 for half-speed). Defaults to 1. */
+  speedMultiplier?: number;
+  /** Multiplier applied to boidNoise (e.g. 0.35 to reduce jitter in initial state). Defaults to 1. */
+  noiseMultiplier?: number;
+  /** When set, overrides steeringInertia in the non-animating state (e.g. 0.92 for initial to reduce micro-oscillations). */
+  steeringInertiaOverride?: number;
+  /** When set, overrides swarmSwirlStrength (e.g. 0.04 for strong orbital motion in orb enter). */
+  swirlStrengthOverride?: number;
+  /** When > 0, uses a shell attractor pulling particles to this radius from attractorOverride center. */
+  shellAttractorRadius?: number;
+  /** When set, overrides cohesionFactor (e.g. 0 to disable cohesion during orb enter so it doesn't fight the shell attractor). */
+  cohesionOverride?: number;
+  /** When set, overrides separationFactor (e.g. 0 to disable separation during orb enter). */
+  separationOverride?: number;
+  /** When set, overrides alignmentFactor (e.g. 0 to disable alignment during orb enter). */
+  alignmentOverride?: number;
+  /** Multiplier applied to the final rendered opacity (e.g. 0.5 to dim in formed state). Defaults to 1. */
+  opacityMultiplier?: number;
 }
 
 const blendingForMode = (mode: TBlendModeKey) => {
@@ -87,6 +117,7 @@ export default function ParticleSystem(props: IParticleSystemProps) {
     surfaceNormalOffset,
     swarmOrbitSpeed,
     swarmOrbitRadius,
+    swarmSwirlStrength,
     swarmSplitIntensity,
     swarmSplitSpeed,
   } = props;
@@ -94,15 +125,33 @@ export default function ParticleSystem(props: IParticleSystemProps) {
   const {
     attractorOverride = null,
     attractorBoost = 6,
+    homeSpringOverride,
     pulseTimestamp = 0,
     teleportSignal = null,
+    resetVelocitiesSignal,
     onCentroidUpdate,
+    speedMultiplier = 1,
+    noiseMultiplier,
+    steeringInertiaOverride,
+    swirlStrengthOverride,
+    shellAttractorRadius,
+    cohesionOverride,
+    separationOverride,
+    alignmentOverride,
+    opacityMultiplier = 1,
   } = props;
 
   const meshRef = useRef<InstancedMesh>(null);
   const boidsRef = useRef<IBoidParticle[]>([]);
   const sizeRef = useRef(particleSize);
   sizeRef.current = particleSize;
+  const opacityRef = useRef(opacity);
+  opacityRef.current = opacity;
+  const opacityMultiplierRef = useRef(opacityMultiplier);
+  opacityMultiplierRef.current = opacityMultiplier;
+
+  const shellElapsedRef = useRef(0);
+  const prevShellRadiusRef = useRef(0);
 
   const pulseIntensityRef = useRef(0);
   const lastPulseRef = useRef(0);
@@ -132,51 +181,138 @@ export default function ParticleSystem(props: IParticleSystemProps) {
     if (!teleportSignal || teleportSignal.timestamp === lastTeleportRef.current)
       return;
     lastTeleportRef.current = teleportSignal.timestamp;
+    const {
+      x,
+      y,
+      z,
+      scatterX,
+      scatterY,
+      nearFraction,
+      nearZMin,
+      nearZMax,
+      farZMin,
+      farZMax,
+    } = teleportSignal;
+
+    const swirlSpeed = 0.008;
     const boids = boidsRef.current;
     for (let i = 0; i < boids.length; i++) {
       const b = boids[i];
-      const scatter = 1.5;
-      b.x = teleportSignal.x + (Math.random() - 0.5) * scatter;
-      b.y = teleportSignal.y + (Math.random() - 0.5) * scatter;
-      b.z = teleportSignal.z + (Math.random() - 0.5) * scatter;
-      const swirlSpeed = 0.008;
+      if (
+        nearFraction !== undefined &&
+        farZMin !== undefined &&
+        farZMax !== undefined &&
+        nearZMin !== undefined &&
+        nearZMax !== undefined
+      ) {
+        const sX = scatterX ?? 0.7;
+        const sY = scatterY ?? 0.7;
+        const isNear = Math.random() < nearFraction;
+        const zRange = isNear
+          ? nearZMin + Math.random() * (nearZMax - nearZMin)
+          : farZMin + Math.random() * (farZMax - farZMin);
+        b.x = x + (Math.random() - 0.5) * sX;
+        b.y = y + (Math.random() - 0.5) * sY - Math.random() * sY;
+        b.z = zRange;
+      } else {
+        const scatter = 0.7;
+        b.x = x + (Math.random() - 0.5) * scatter;
+        b.y = y + (Math.random() - 0.5) * scatter;
+        b.z = z + (Math.random() - 0.5) * scatter;
+      }
       b.vx = (Math.random() - 0.5) * swirlSpeed;
       b.vy = (Math.random() - 0.5) * swirlSpeed;
       b.vz = (Math.random() - 0.5) * swirlSpeed;
     }
   }, [teleportSignal]);
 
+  const lastResetSignalRef = useRef<number | undefined>(undefined);
+  useEffect(() => {
+    if (
+      resetVelocitiesSignal === undefined ||
+      resetVelocitiesSignal === lastResetSignalRef.current
+    )
+      return;
+    lastResetSignalRef.current = resetVelocitiesSignal;
+    const boids = boidsRef.current;
+    for (let i = 0; i < boids.length; i++) {
+      boids[i].vx = 0;
+      boids[i].vy = 0;
+      boids[i].vz = 0;
+    }
+  }, [resetVelocitiesSignal]);
+
   const boidParamsRef = useRef<IBoidParams>({ ...BOID_DEFAULTS });
 
   useEffect(() => {
+    const isAnimating =
+      (attractorOverride && attractorBoost > 6) ||
+      (homeSpringOverride !== undefined && homeSpringOverride > 0.005);
     boidParamsRef.current = {
       visualRange: boidVisualRange,
       separationDist: boidVisualRange * 0.21,
-      separationFactor: boidSeparation,
-      alignmentFactor: boidAlignment,
-      cohesionFactor: boidCohesion,
+      separationFactor:
+        separationOverride !== undefined
+          ? separationOverride
+          : isAnimating
+            ? boidSeparation * 0.1
+            : boidSeparation,
+      alignmentFactor:
+        alignmentOverride !== undefined
+          ? alignmentOverride
+          : isAnimating
+            ? boidAlignment * 0.15
+            : boidAlignment,
+      cohesionFactor:
+        cohesionOverride !== undefined
+          ? cohesionOverride
+          : isAnimating
+            ? boidCohesion * 0.1
+            : boidCohesion,
       attractorFactor: attractorOverride
         ? BOID_DEFAULTS.attractorFactor * attractorBoost
         : BOID_DEFAULTS.attractorFactor,
-      homeSpringFactor: attractorOverride
-        ? boidHomeSpring * 0.05
-        : boidHomeSpring,
+      homeSpringFactor:
+        homeSpringOverride !== undefined
+          ? homeSpringOverride
+          : attractorOverride
+            ? boidHomeSpring * 0.05
+            : boidHomeSpring,
       maxHomeDistance: BOID_DEFAULTS.maxHomeDistance,
-      speedLimit: boidSpeedLimit,
+      speedLimit: isAnimating
+        ? boidSpeedLimit *
+          (speedMultiplier ?? 1) *
+          Math.max(
+            attractorBoost ?? 6,
+            homeSpringOverride !== undefined ? homeSpringOverride * 600 : 1,
+          )
+        : boidSpeedLimit * (speedMultiplier ?? 1),
       minSpeed: boidSpeedLimit * 0.32,
-      noiseMagnitude: boidNoise,
+      noiseMagnitude: isAnimating ? 0 : boidNoise * (noiseMultiplier ?? 1),
       orbitSpeed: swarmOrbitSpeed,
       orbitRadius: swarmOrbitRadius,
-      splitIntensity: swarmSplitIntensity,
+      splitIntensity: isAnimating ? 0 : swarmSplitIntensity,
       splitSpeed: swarmSplitSpeed,
       splitDecay: BOID_DEFAULTS.splitDecay,
-      steeringInertia: BOID_DEFAULTS.steeringInertia,
-      velocityStretchFactor: BOID_DEFAULTS.velocityStretchFactor,
+      steeringInertia: isAnimating
+        ? 0.3
+        : (steeringInertiaOverride ?? BOID_DEFAULTS.steeringInertia),
+      swirlStrength: isAnimating
+        ? 0
+        : (swirlStrengthOverride ?? swarmSwirlStrength),
+      velocityStretchFactor: isAnimating
+        ? 0
+        : BOID_DEFAULTS.velocityStretchFactor,
       attractorOverride,
+      shellAttractorRadius: shellAttractorRadius ?? 0,
     };
   }, [
     attractorBoost,
     attractorOverride,
+    alignmentOverride,
+    cohesionOverride,
+    separationOverride,
+    shellAttractorRadius,
     boidAlignment,
     boidCohesion,
     boidHomeSpring,
@@ -184,8 +320,14 @@ export default function ParticleSystem(props: IParticleSystemProps) {
     boidSeparation,
     boidSpeedLimit,
     boidVisualRange,
+    homeSpringOverride,
+    noiseMultiplier,
+    speedMultiplier,
+    steeringInertiaOverride,
+    swirlStrengthOverride,
     swarmOrbitSpeed,
     swarmOrbitRadius,
+    swarmSwirlStrength,
     swarmSplitIntensity,
     swarmSplitSpeed,
   ]);
@@ -210,7 +352,7 @@ export default function ParticleSystem(props: IParticleSystemProps) {
     material.color.set(color);
     material.opacity = opacity;
     material.blending = blendingForMode(blendMode);
-    material.depthWrite = blendMode === "normal" ? opacity >= 1 : false;
+    material.depthWrite = false;
     material.transparent = opacity < 1 || blendMode !== "normal";
     material.needsUpdate = true;
   }, [material, blendMode, color, opacity]);
@@ -233,7 +375,7 @@ export default function ParticleSystem(props: IParticleSystemProps) {
 
     const arr = mesh.instanceMatrix.array as Float32Array;
     const boids = boidsRef.current;
-    const s = particleSize * 2.5;
+    const s = particleSize;
 
     for (let i = 0; i < count; i += 1) {
       const b = boids[i];
@@ -260,13 +402,26 @@ export default function ParticleSystem(props: IParticleSystemProps) {
     mesh.instanceMatrix.needsUpdate = true;
   }, [count, particleSize, samples]);
 
-  useFrame((state) => {
+  useFrame((state, delta) => {
     const mesh = meshRef.current;
     const boids = boidsRef.current;
 
     if (!mesh || count <= 0 || boids.length === 0) {
       return;
     }
+
+    // Track time since the shell attractor was last activated so the tumbling
+    // axis uses a local clock instead of the ever-growing global elapsed time.
+    const currentShellRadius = shellAttractorRadius ?? 0;
+    if (currentShellRadius > 0) {
+      if (prevShellRadiusRef.current === 0) {
+        shellElapsedRef.current = 0;
+      }
+      shellElapsedRef.current += delta;
+    }
+    prevShellRadiusRef.current = currentShellRadius;
+
+    boidParamsRef.current.shellElapsed = shellElapsedRef.current;
 
     // Decay external pulse and temporarily boost split intensity
     const pulse = pulseIntensityRef.current;
@@ -283,7 +438,7 @@ export default function ParticleSystem(props: IParticleSystemProps) {
     }
 
     const arr = mesh.instanceMatrix.array as Float32Array;
-    const s = sizeRef.current * 2.5;
+    const s = sizeRef.current;
 
     let cx = 0;
     let cy = 0;
@@ -304,6 +459,16 @@ export default function ParticleSystem(props: IParticleSystemProps) {
     }
 
     mesh.instanceMatrix.needsUpdate = true;
+
+    // Apply opacity multiplier per-frame so it stays reactive without
+    // adding to the useEffect dep array (avoids hook array-size violations).
+    const effectiveOpacity = opacityRef.current * opacityMultiplierRef.current;
+    if (material.opacity !== effectiveOpacity) {
+      material.opacity = effectiveOpacity;
+      material.transparent =
+        effectiveOpacity < 1 || material.blending !== NormalBlending;
+      material.needsUpdate = true;
+    }
 
     if (onCentroidUpdate && count > 0) {
       onCentroidUpdate({ x: cx / count, y: cy / count, z: cz / count });

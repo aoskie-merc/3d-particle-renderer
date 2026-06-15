@@ -26,6 +26,8 @@ export interface ISkinParticleSystemProps {
   particleCount: number;
   particleSize: number;
   proximityMode?: boolean;
+  /** Radius of the proximity reveal zone (world units). Defaults to 1.0. */
+  proximityRadius?: number;
   skinColor: string;
   skinOpacity: number;
   swarmCentroid?: { x: number; y: number; z: number };
@@ -68,6 +70,7 @@ export default function SkinParticleSystem(props: ISkinParticleSystemProps) {
     particleCount,
     particleSize,
     proximityMode = false,
+    proximityRadius = 1.0,
     skinColor,
     skinOpacity,
     swarmCentroid,
@@ -158,7 +161,7 @@ export default function SkinParticleSystem(props: ISkinParticleSystemProps) {
     uniforms.skinNormalShading.value = normalShading;
     uniforms.skinDepthFade.value = depthFade;
     uniforms.skinContourDensity.value = contourDensity;
-    uniforms.particleWorldRadius.value = particleSize * 5.0;
+    uniforms.particleWorldRadius.value = particleSize * 0.7;
     uniforms.lightWorldDir.value.copy(LIGHT_WORLD_DIR);
 
     const highlightActive = sweepHighlightY !== null;
@@ -166,6 +169,7 @@ export default function SkinParticleSystem(props: ISkinParticleSystemProps) {
     uniforms.sweepHighlightActive.value = highlightActive ? 1.0 : 0.0;
 
     uniforms.proximityMode.value = proximityMode ? 1.0 : 0.0;
+    uniforms.proximityRadius.value = proximityRadius;
     if (swarmCentroid) {
       uniforms.swarmCentroid.value.set(
         swarmCentroid.x,
@@ -253,7 +257,7 @@ void main() {
   vAlpha =
     clamp(
       skinOpacity * depthOpacityMul * normalOpacity * mix(1.0, contourAmp * 1.06, contourGlow * clamp(skinContourDensity, 0.0, 1.0)),
-      0.001,
+      0.0,
       1.0);
 
   gl_Position = projectionMatrix * mvPosition;
@@ -291,7 +295,7 @@ void main() {
 
   if (proximityMode > 0.5) {
     float dist = length(vWorldPos - swarmCentroid);
-    float proxFade = 1.0 - smoothstep(proximityRadius * 0.3, proximityRadius, dist);
+    float proxFade = 1.0 - smoothstep(0.0, proximityRadius, dist);
     finalAlpha *= proxFade;
   }
 

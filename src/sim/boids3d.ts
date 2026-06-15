@@ -180,7 +180,7 @@ export function createBoidParticles(
  * Performance threshold: above this count we only run neighbor queries on a
  * subset of particles each frame to stay within budget.
  */
-const PARTIAL_UPDATE_THRESHOLD = 4000;
+const PARTIAL_UPDATE_THRESHOLD = 12000;
 
 let partialOffset = 0;
 
@@ -215,11 +215,13 @@ export function stepBoids(
     orbitSpeed,
     separationDist,
     separationFactor,
+    shellAttractorRadius,
     speedLimit,
     splitDecay,
     splitIntensity,
     splitSpeed,
     steeringInertia,
+    swirlStrength,
     velocityStretchFactor,
     visualRange,
   } = params;
@@ -288,12 +290,15 @@ export function stepBoids(
   }
 
   // --- Split pulse along flock heading perpendicular ---
-  // 3 overlapping frequencies with power-8 for wider sustained peaks (matches 2D prototype)
+  // 3 overlapping frequencies with power-4 for broader, more sustained oscillation
   const st = elapsed * splitSpeed;
-  const pulse1 = Math.pow(Math.max(0, Math.sin(st * 0.8)), 8);
-  const pulse2 = Math.pow(Math.max(0, Math.sin(st * 0.55 + 1.5)), 8);
-  const pulse3 = Math.pow(Math.max(0, Math.sin(st * 0.35 + 3.0)), 8);
+  const pulse1 = Math.pow(Math.max(0, Math.sin(st * 0.8)), 4);
+  const pulse2 = Math.pow(Math.max(0, Math.sin(st * 0.55 + 1.5)), 4);
+  const pulse3 = Math.pow(Math.max(0, Math.sin(st * 0.35 + 3.0)), 4);
   const autoSplit = Math.max(pulse1, pulse2, pulse3) * splitIntensity * 0.9;
+
+  // Swirl modulates inversely with split — swirl peaks between splits, drops during splits
+  const swirlMod = 1.4 - autoSplit * 1.2;
 
   // Split plane perpendicular to flock heading
   let perpX: number;
@@ -459,13 +464,51 @@ export function stepBoids(
     p.vy += headY * dotHead * velocityStretchFactor;
     p.vz += headZ * dotHead * velocityStretchFactor;
 
-    // Attractor — gentle sweep
-    p.vx += (attractX - p.x) * attractorFactor;
-    p.vy += (attractY - p.y) * attractorFactor;
-    p.vz += (attractZ - p.z) * attractorFactor;
+    // Attractor — shell or point
+    if (shellAttractorRadius > 0 && attractorOverride) {
+      const dx = p.x - attractorOverride.x;
+      const dy = p.y - attractorOverride.y;
+      const dz = p.z - attractorOverride.z;
+      const dist = Math.sqrt(dx * dx + dy * dy + dz * dz) || 0.0001;
+      const radialError = dist - shellAttractorRadius;
+      // radialError > 0 = too far (pull in), < 0 = too close (push out)
+      const effectiveAttractorFactor =
+        attractorFactor * (params.attractorBoost ?? 1);
+      const shellForce = -radialError * effectiveAttractorFactor * 5;
+      p.vx += (dx / dist) * shellForce;
+      p.vy += (dy / dist) * shellForce;
+      p.vz += (dz / dist) * shellForce;
+    } else {
+      p.vx += (attractX - p.x) * attractorFactor;
+      p.vy += (attractY - p.y) * attractorFactor;
+      p.vz += (attractZ - p.z) * attractorFactor;
+    }
+
+    // Tumbling swirl — axis rotates slowly so particles spread over the full sphere
+    // rather than collapsing into a fixed equatorial ring.
+    // Uses shellElapsed (time since shell activated) so the axis phase doesn't
+    // freeze after hours of runtime when global elapsed is thousands of seconds.
+    if (swirlStrength > 0) {
+      const t = shellAttractorRadius > 0 ? (params.shellElapsed ?? 0) : elapsed;
+      const ax = Math.sin(t * 0.5);
+      const ay = Math.cos(t * 0.36);
+      const az = Math.sin(t * 0.26);
+      const alen = Math.sqrt(ax * ax + ay * ay + az * az) || 1;
+      const nx = ax / alen;
+      const ny = ay / alen;
+      const nz = az / alen;
+      const dx = p.x - attractX;
+      const dy_c = p.y - attractY;
+      const dz_s = p.z - attractZ;
+      const effectiveSwirl = swirlStrength * swirlMod;
+      p.vx += (ny * dz_s - nz * dy_c) * effectiveSwirl;
+      p.vy += (nz * dx - nx * dz_s) * effectiveSwirl;
+      p.vz += (nx * dy_c - ny * dx) * effectiveSwirl;
+    }
 
     // Split pulse — push to opposite sides of the flock-perpendicular plane
-    if (autoSplit > 0.05) {
+    // Suppressed during shell attractor (orb Enter phase) to keep sphere formation clean
+    if (autoSplit > 0.05 && shellAttractorRadius === 0) {
       const tcx = p.x - attractX;
       const tcy = p.y - attractY;
       const tcz = p.z - attractZ;
@@ -483,38 +526,50 @@ export function stepBoids(
     const dhy = p.homeY - p.y;
     const dhz = p.homeZ - p.z;
     const homeDist2 = dhx * dhx + dhy * dhy + dhz * dhz;
-    let springK = homeSpringFactor;
-    if (homeDist2 > maxHomeSq) {
-      springK *= 1 + (Math.sqrt(homeDist2) - maxHomeDistance) * 4;
+
+    if (homeSpringFactor > 0.003) {
+      // Animation mode: direct seek — set velocity toward home, skip all other forces
+      const homeDist = Math.sqrt(homeDist2) || 0.0001;
+      const seekSpeed = Math.min(homeDist * homeSpringFactor * 8, speedLimit);
+      p.vx = (dhx / homeDist) * seekSpeed;
+      p.vy = (dhy / homeDist) * seekSpeed;
+      p.vz = (dhz / homeDist) * seekSpeed;
+      // Skip noise, inertia, turn propagation — go straight to speed clamp
+    } else {
+      // Normal mode: gentle spring with distance ramp
+      let springK = homeSpringFactor;
+      if (homeDist2 > maxHomeSq) {
+        springK *= 1 + (Math.sqrt(homeDist2) - maxHomeDistance) * 4;
+      }
+      p.vx += dhx * springK;
+      p.vy += dhy * springK;
+      p.vz += dhz * springK;
+
+      // Noise
+      p.noiseAngle += p.noiseSpeed;
+      const noisePhi = p.noiseAngle;
+      const noiseTheta = p.noiseAngle * 0.7 + i * 0.001;
+      const sinPhi = Math.sin(noisePhi);
+      const cosPhi = Math.cos(noisePhi);
+      const sinTheta = Math.sin(noiseTheta);
+      const cosTheta = Math.cos(noiseTheta);
+      p.vx += cosPhi * sinTheta * noiseMagnitude;
+      p.vy += sinPhi * noiseMagnitude;
+      p.vz += cosPhi * cosTheta * noiseMagnitude;
+
+      // Steering inertia: blend forces with previous velocity for momentum
+      p.vx = oldVX * steeringInertia + p.vx * oneMinusInertia;
+      p.vy = oldVY * steeringInertia + p.vy * oneMinusInertia;
+      p.vz = oldVZ * steeringInertia + p.vz * oneMinusInertia;
+
+      // Turn propagation (applied AFTER inertia so it bypasses damping)
+      p.vx += p.queuedTurnX * TURN_PROPAGATION_RATE;
+      p.vy += p.queuedTurnY * TURN_PROPAGATION_RATE;
+      p.vz += p.queuedTurnZ * TURN_PROPAGATION_RATE;
+      p.queuedTurnX *= TURN_QUEUE_DECAY;
+      p.queuedTurnY *= TURN_QUEUE_DECAY;
+      p.queuedTurnZ *= TURN_QUEUE_DECAY;
     }
-    p.vx += dhx * springK;
-    p.vy += dhy * springK;
-    p.vz += dhz * springK;
-
-    // Noise
-    p.noiseAngle += p.noiseSpeed;
-    const noisePhi = p.noiseAngle;
-    const noiseTheta = p.noiseAngle * 0.7 + i * 0.001;
-    const sinPhi = Math.sin(noisePhi);
-    const cosPhi = Math.cos(noisePhi);
-    const sinTheta = Math.sin(noiseTheta);
-    const cosTheta = Math.cos(noiseTheta);
-    p.vx += cosPhi * sinTheta * noiseMagnitude;
-    p.vy += sinPhi * noiseMagnitude;
-    p.vz += cosPhi * cosTheta * noiseMagnitude;
-
-    // Steering inertia: blend forces with previous velocity for momentum
-    p.vx = oldVX * steeringInertia + p.vx * oneMinusInertia;
-    p.vy = oldVY * steeringInertia + p.vy * oneMinusInertia;
-    p.vz = oldVZ * steeringInertia + p.vz * oneMinusInertia;
-
-    // Turn propagation (applied AFTER inertia so it bypasses damping)
-    p.vx += p.queuedTurnX * TURN_PROPAGATION_RATE;
-    p.vy += p.queuedTurnY * TURN_PROPAGATION_RATE;
-    p.vz += p.queuedTurnZ * TURN_PROPAGATION_RATE;
-    p.queuedTurnX *= TURN_QUEUE_DECAY;
-    p.queuedTurnY *= TURN_QUEUE_DECAY;
-    p.queuedTurnZ *= TURN_QUEUE_DECAY;
 
     // Speed clamp
     const speed = Math.sqrt(p.vx * p.vx + p.vy * p.vy + p.vz * p.vz);

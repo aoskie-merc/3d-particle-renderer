@@ -15,12 +15,13 @@ const MAX_AZIMUTH_DEVIATION = Math.PI / 2;
 const LERP_SPEED = 3.5;
 
 interface ISpringOrbitControlsProps {
+  enabled?: boolean;
   maxDistance: number;
   minDistance: number;
 }
 
 export default function SpringOrbitControls(props: ISpringOrbitControlsProps) {
-  const { maxDistance, minDistance } = props;
+  const { enabled = true, maxDistance, minDistance } = props;
   const { camera } = useThree();
   const isDragging = useRef(false);
   const shouldReturn = useRef(false);
@@ -63,7 +64,8 @@ export default function SpringOrbitControls(props: ISpringOrbitControlsProps) {
       dampingFactor={0.1}
       enableDamping
       enablePan={false}
-      enableZoom
+      enableRotate={enabled}
+      enableZoom={enabled}
       maxAzimuthAngle={MAX_AZIMUTH_DEVIATION}
       maxDistance={maxDistance}
       maxPolarAngle={basePolar + MAX_POLAR_DEVIATION}

@@ -47,11 +47,21 @@ export interface IParticleSettings {
   /** Swarm motion — orbit & split controls. */
   swarmOrbitSpeed: number;
   swarmOrbitRadius: number;
+  swarmSwirlStrength: number;
   swarmSplitIntensity: number;
   swarmSplitSpeed: number;
 
   /** When enabled, skin opacity is driven by proximity to the swarm centroid. */
   proximityReveal: boolean;
+
+  /** Radius of the proximity reveal zone around the swarm centroid (world units). */
+  proximityRadius: number;
+
+  /** Target radius for the Orb animation state (world units). */
+  orbRadius: number;
+
+  /** Swarm behaviour during the Enter state (after particles have settled). */
+  enterSwarmMode: "murmur" | "orbit" | "drift";
 
   /** Base model particle skin replaces wire shell when enabled. */
   skinEnabled: boolean;
@@ -95,9 +105,13 @@ export const PARTICLE_SETTINGS_DEFAULTS: IParticleSettings = {
   boidNoise: BOID_DEFAULTS.noiseMagnitude,
   swarmOrbitSpeed: BOID_DEFAULTS.orbitSpeed,
   swarmOrbitRadius: BOID_DEFAULTS.orbitRadius,
-  swarmSplitIntensity: BOID_DEFAULTS.splitIntensity,
+  swarmSwirlStrength: BOID_DEFAULTS.swirlStrength,
+  swarmSplitIntensity: 0.35,
   swarmSplitSpeed: BOID_DEFAULTS.splitSpeed,
   proximityReveal: false,
+  proximityRadius: 1.0,
+  orbRadius: 0.3,
+  enterSwarmMode: "murmur",
   skinEnabled: true,
   skinParticleCount: 135_936,
   skinParticleSize: 0.0055,
@@ -105,5 +119,5 @@ export const PARTICLE_SETTINGS_DEFAULTS: IParticleSettings = {
   skinNormalShading: 0,
   skinContourDensity: 0.68,
   skinColor: "#c8b79b",
-  skinOpacity: 0.81,
+  skinOpacity: 0.3,
 };

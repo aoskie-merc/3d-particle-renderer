@@ -320,7 +320,7 @@ export default function SettingsChrome(props: Readonly<IProps>): ReactElement {
       >
         <header className={styles.sheetHeading}>
           <div>
-            <p className={styles.sheetKicker}>3D Particle Renderer</p>
+            <p className={styles.sheetKicker}>Sculpture Full - V2</p>
             <p className={styles.sheetTitle}>Parameters</p>
           </div>
         </header>
@@ -446,6 +446,17 @@ export default function SettingsChrome(props: Readonly<IProps>): ReactElement {
             />
 
             <Slider
+              label="Swirl"
+              max={0.02}
+              min={0}
+              step={0.0005}
+              value={settings.swarmSwirlStrength}
+              onChange={(next: number) => {
+                onPatch({ swarmSwirlStrength: next });
+              }}
+            />
+
+            <Slider
               label="Split intensity"
               max={1}
               min={0}
@@ -486,6 +497,29 @@ export default function SettingsChrome(props: Readonly<IProps>): ReactElement {
               }}
             />
 
+            <Slider
+              disabled={!settings.proximityReveal}
+              label="Proximity radius"
+              max={4.0}
+              min={0.1}
+              step={0.05}
+              value={settings.proximityRadius}
+              onChange={(next: number) => {
+                onPatch({ proximityRadius: next });
+              }}
+            />
+
+            <Slider
+              label="Orb radius"
+              max={3.0}
+              min={0.2}
+              step={0.05}
+              value={settings.orbRadius}
+              onChange={(next: number) => {
+                onPatch({ orbRadius: next });
+              }}
+            />
+
             <div className={styles.selectRow}>
               <span className={styles.selectLabel}>Anim duration</span>
               <select
@@ -501,6 +535,26 @@ export default function SettingsChrome(props: Readonly<IProps>): ReactElement {
                 <option value={2000}>2s</option>
                 <option value={2500}>2.5s</option>
                 <option value={3000}>3s</option>
+              </select>
+            </div>
+
+            <div className={styles.selectRow}>
+              <span className={styles.selectLabel}>Enter mode</span>
+              <select
+                className={styles.selectInput}
+                value={settings.enterSwarmMode}
+                onChange={(e: ChangeEvent<HTMLSelectElement>) =>
+                  onPatch({
+                    enterSwarmMode: e.target.value as
+                      | "murmur"
+                      | "orbit"
+                      | "drift",
+                  })
+                }
+              >
+                <option value="murmur">Murmur (default)</option>
+                <option value="orbit">Orbit away</option>
+                <option value="drift">Drift up/down</option>
               </select>
             </div>
           </Section>
@@ -530,18 +584,6 @@ export default function SettingsChrome(props: Readonly<IProps>): ReactElement {
                 onPatch({
                   skinParticleCount: snapSkinParticleCountForUi(next),
                 });
-              }}
-            />
-
-            <Slider
-              disabled={!settings.skinEnabled}
-              label="Skin dot size"
-              max={0.05}
-              min={0.001}
-              step={0.0005}
-              value={settings.skinParticleSize}
-              onChange={(next: number) => {
-                onPatch({ skinParticleSize: next });
               }}
             />
 
