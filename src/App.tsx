@@ -493,7 +493,7 @@ export default function App() {
 
   useEffect(() => {
     let cancelled = false;
-    loadStaticModel("/model.stl").then((geom) => {
+    loadStaticModel(import.meta.env.BASE_URL + "model.stl").then((geom) => {
       if (!cancelled) setGeometry(geom);
     });
     return () => {

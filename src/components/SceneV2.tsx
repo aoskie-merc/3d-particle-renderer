@@ -804,7 +804,7 @@ export default function SceneV2(props: ISceneV2Props) {
   useEffect(() => {
     let cancelled = false;
 
-    loadStaticModel("/model.stl").then((geom) => {
+    loadStaticModel(import.meta.env.BASE_URL + "model.stl").then((geom) => {
       if (cancelled) return;
 
       geometryRef.current = geom;
