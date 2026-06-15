@@ -333,6 +333,19 @@ export default function AppV2() {
   const scrubberValueRef = useRef(scrubberValue);
   scrubberValueRef.current = scrubberValue;
 
+  // ── Continuous scrubber tracking refs ─────────────────────────────────
+  // beatStartTimeRef: wall-clock ms when the current beat began (or when the
+  // user finished dragging). Used by the scrubber RAF to interpolate position.
+  const beatStartTimeRef = useRef<number>(Date.now());
+  const scrubberRafRef = useRef<number>(0);
+  // isDragging: true while user is actively dragging the range input
+  const [isDragging, setIsDragging] = useState(false);
+  const isDraggingRef = useRef(false);
+  isDraggingRef.current = isDragging;
+  // Ref mirror of beatDurations so RAF callbacks always read the latest value
+  const beatDurationsRef = useRef(beatDurations);
+  beatDurationsRef.current = beatDurations;
+
   const [isPlaying, setIsPlaying] = useState(false);
 
   // ── Settings ──────────────────────────────────────────────────────────────
@@ -616,6 +629,7 @@ export default function AppV2() {
   useEffect(() => {
     return () => {
       if (playRafRef.current) cancelAnimationFrame(playRafRef.current);
+      if (scrubberRafRef.current) cancelAnimationFrame(scrubberRafRef.current);
     };
   }, []);
 
@@ -645,25 +659,62 @@ export default function AppV2() {
     [stopPlayback, beatDurations, beatThresholds],
   );
 
-  // ── Beat → scrubberValue reverse sync ────────────────────────────────────
-  // When beat changes from an external source that didn't already update
-  // scrubberValue (e.g. a future programmatic beat set), snap the scrubber to
-  // the start of that beat's weight segment.  The scrubberValueRef lets us
-  // read the latest value without adding it to the dependency array (which
-  // would cause this effect to re-run on every scrubber drag).
+  const handleScrubberPointerDown = useCallback(() => {
+    setIsDragging(true);
+  }, []);
+
+  // When the user releases the scrubber, adjust beatStartTimeRef so the
+  // scrubber RAF resumes from the exact scrubbed position (not from 0).
+  const handleScrubberPointerUp = useCallback(() => {
+    setIsDragging(false);
+    const norm = scrubberValueRef.current / 1000;
+    const thresholds = beatThresholdsRef.current;
+    const currentBeat = beatRefForCb.current;
+    const beatStart = thresholds[currentBeat] ?? 0;
+    const beatEnd = thresholds[currentBeat + 1] ?? 1.0;
+    const progressInBeat =
+      beatEnd > beatStart
+        ? Math.min(Math.max((norm - beatStart) / (beatEnd - beatStart), 0), 1)
+        : 0;
+    beatStartTimeRef.current =
+      Date.now() - progressInBeat * beatDurationsRef.current[currentBeat] * 1000;
+  }, []);
+
+  // ── Record beat start time for continuous scrubber tracking ─────────────
+  // When beat changes (auto-advance or beat click), record the wall-clock time
+  // so the scrubber RAF can interpolate continuously within the beat.
   useEffect(() => {
-    if (
-      beatAtScrubberPos(
-        scrubberValueRef.current / 1000,
-        beatThresholdsRef.current,
-      ) !== beat
-    ) {
-      setScrubberValue(
-        Math.round((beatThresholdsRef.current[beat] ?? 0) * 1000),
-      );
+    beatStartTimeRef.current = Date.now();
+  }, [beat]);
+
+  // ── Scrubber RAF (continuous position update in non-playing mode) ─────────
+  // Drives scrubberValue from elapsed time within the current beat so the
+  // thumb moves smoothly even during auto-advance (no Play button needed).
+  // Pauses itself when isPlaying (the playback RAF owns scrubberValue then)
+  // and skips updates while isDragging (user controls scrubberValue directly).
+  useEffect(() => {
+    if (isPlaying) return;
+
+    function tick() {
+      if (!isDraggingRef.current) {
+        const thresholds = beatThresholdsRef.current;
+        const currentBeat = beatRefForCb.current;
+        const beatDur = beatDurationsRef.current[currentBeat] * 1000;
+        const elapsed = Date.now() - beatStartTimeRef.current;
+        const progressInBeat = Math.min(elapsed / beatDur, 1);
+        const beatStart = thresholds[currentBeat] ?? 0;
+        const beatEnd = thresholds[currentBeat + 1] ?? 1.0;
+        const scrubberPos = beatStart + progressInBeat * (beatEnd - beatStart);
+        setScrubberValue(Math.round(scrubberPos * 1000));
+      }
+      scrubberRafRef.current = requestAnimationFrame(tick);
     }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [beat, beatThresholds]);
+
+    scrubberRafRef.current = requestAnimationFrame(tick);
+    return () => {
+      if (scrubberRafRef.current) cancelAnimationFrame(scrubberRafRef.current);
+    };
+  }, [isPlaying]);
 
   // ── Beat duration patch ───────────────────────────────────────────────────
   const patchBeatDuration = useCallback((b: TBeat, s: number) => {
@@ -832,6 +883,9 @@ export default function AppV2() {
             step={1}
             value={scrubberValue}
             onChange={handleScrubberChange}
+            onPointerDown={handleScrubberPointerDown}
+            onPointerUp={handleScrubberPointerUp}
+            onPointerCancel={handleScrubberPointerUp}
           />
           {/* Visual segmented track */}
           <div className={styles.scrubberTrack}>
