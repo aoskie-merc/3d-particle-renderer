@@ -358,6 +358,61 @@ export function getLerpSpeedForBeat(beat: TBeat): number {
   }
 }
 
+/**
+ * Re-assigns cube target positions so that each particle's cube position is
+ * spatially close to its figure-home position. This prevents particles from
+ * needing to cross the scene during cube↔figure transitions, making Hint and
+ * Reveal feel like one continuous shape deforming rather than two particle
+ * systems swapping places.
+ *
+ * Uses an O(n log n) spatial sort: particles and cube targets are both sorted
+ * by Y→X→Z, then paired index-by-index. This ensures the most visually
+ * important axis (vertical Y) is locally matched. A particle near the top of
+ * the figure will receive a cube target near the top of the cube.
+ *
+ * Must be called AFTER homeX/Y/Z are set on all particles (i.e., after
+ * applyRotationToHomes runs) and after cubeTargets are generated.
+ *
+ * @returns A new Float32Array where result[i*3 … i*3+2] is the spatially
+ *   matched cube surface point for particles[i].
+ */
+export function reassignCubeTargetsByProximity(
+  particles: IParticleV2[],
+  cubeTargets: Float32Array,
+): Float32Array {
+  const n = particles.length;
+
+  // Sort particle indices by homeY (primary), homeX (secondary), homeZ (tertiary)
+  const particleOrder = Array.from({ length: n }, (_, i) => i).sort((a, b) => {
+    const dy = particles[a].homeY - particles[b].homeY;
+    if (dy !== 0) return dy;
+    const dx = particles[a].homeX - particles[b].homeX;
+    if (dx !== 0) return dx;
+    return particles[a].homeZ - particles[b].homeZ;
+  });
+
+  // Sort cube target indices by Y (primary), X (secondary), Z (tertiary)
+  const cubeOrder = Array.from({ length: n }, (_, i) => i).sort((a, b) => {
+    const dy = cubeTargets[a * 3 + 1] - cubeTargets[b * 3 + 1];
+    if (dy !== 0) return dy;
+    const dx = cubeTargets[a * 3] - cubeTargets[b * 3];
+    if (dx !== 0) return dx;
+    return cubeTargets[a * 3 + 2] - cubeTargets[b * 3 + 2];
+  });
+
+  // Pair sorted particle i with sorted cube target i — ensures Y-local matching
+  const sorted = new Float32Array(n * 3);
+  for (let i = 0; i < n; i++) {
+    const pi = particleOrder[i];
+    const ci = cubeOrder[i];
+    sorted[pi * 3] = cubeTargets[ci * 3];
+    sorted[pi * 3 + 1] = cubeTargets[ci * 3 + 1];
+    sorted[pi * 3 + 2] = cubeTargets[ci * 3 + 2];
+  }
+
+  return sorted;
+}
+
 /** Returns the boid params for a given beat (only relevant for boid beats). */
 export function getBoidParamsForBeat(
   beat: TBeat,

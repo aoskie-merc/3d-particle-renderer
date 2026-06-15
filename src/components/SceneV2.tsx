@@ -3,7 +3,8 @@ import { useFrame } from "@react-three/fiber";
 
 import { useEffect, useMemo, useRef, useState } from "react";
 
-import { Vector3 } from "three";
+import { Euler, Matrix4, Vector3 } from "three";
+import type { OrbitControls as ThreeOrbitControls } from "three-stdlib";
 
 import type { IBoidParticle } from "../sim/boids3d";
 import { stepBoids } from "../sim/boids3d";
@@ -18,6 +19,7 @@ import {
   getLerpSpeedForBeat,
   getLerpWeightForBeat,
   kickstartVelocities,
+  reassignCubeTargetsByProximity,
   setTargetsForBeat,
 } from "../sim/particleSimV2";
 import {
@@ -26,7 +28,13 @@ import {
   sampleMeshSurfaceBiased,
 } from "../utils/surfaceSampler";
 import { loadStaticModel } from "../utils/meshIngest";
-import type { TSurfaceDepthBias, TDepthSizing } from "../types";
+import type {
+  TSurfaceDepthBias,
+  TDepthSizing,
+  TDepthOpacityMode,
+  THintShape,
+  THintStyle,
+} from "../types";
 import ParticleSystemV2 from "./ParticleSystemV2";
 import SkinParticleSystem from "./SkinParticleSystem";
 
@@ -35,6 +43,9 @@ import type { BufferGeometry, Group } from "three";
 // ── Transition constants ───────────────────────────────────────────────────────
 
 const TRANSITION_DURATION = 0.5; // seconds
+
+/** Duration of a single Beat 3 hint cycle (seconds). */
+const CYCLE_DUR = 4.2;
 
 // ── Camera targets per beat ────────────────────────────────────────────────────
 
@@ -62,6 +73,77 @@ function seededShuffle<T>(arr: T[], seed: number): T[] {
   return result;
 }
 
+/**
+ * Assigns each particle a region index based on its Y position after rotation.
+ * Region 0 = top (highest Y = most visually dramatic), region N-1 = bottom.
+ * Used for Beat 3 breathing cycles and Beat 4 staged reveal.
+ */
+function computeRegionIndices(
+  particles: IParticleV2[],
+  regionIndex: Float32Array,
+  numRegions: number,
+): void {
+  const n = particles.length;
+  if (n === 0) return;
+  let minY = Infinity,
+    maxY = -Infinity;
+  for (let i = 0; i < n; i++) {
+    if (particles[i].homeY < minY) minY = particles[i].homeY;
+    if (particles[i].homeY > maxY) maxY = particles[i].homeY;
+  }
+  const range = maxY - minY + 0.001;
+  for (let i = 0; i < n; i++) {
+    const t = (particles[i].homeY - minY) / range;
+    // t=1 (top) → region 0; t=0 (bottom) → region N-1
+    regionIndex[i] = Math.min(Math.floor((1 - t) * numRegions), numRegions - 1);
+  }
+}
+
+/**
+ * Applies an outward velocity impulse to orbit/swarm particles near the
+ * center of the given region, simulating marble-dust debris scatter.
+ */
+function applyDebrisScatter(
+  particles: IParticleV2[],
+  primaryCount: number,
+  regionIndices: Float32Array,
+  targetRegion: number,
+  totalCount: number,
+): void {
+  let cx = 0,
+    cy = 0,
+    cz = 0,
+    cnt = 0;
+  for (let i = 0; i < primaryCount; i++) {
+    if (i < regionIndices.length && regionIndices[i] === targetRegion) {
+      cx += particles[i].homeX;
+      cy += particles[i].homeY;
+      cz += particles[i].homeZ;
+      cnt++;
+    }
+  }
+  if (cnt === 0) return;
+  cx /= cnt;
+  cy /= cnt;
+  cz /= cnt;
+
+  const scatterRadius = 0.8;
+  const impulseMag = 0.015;
+  for (let i = primaryCount; i < totalCount; i++) {
+    const p = particles[i];
+    const dx = p.x - cx;
+    const dy = p.y - cy;
+    const dz = p.z - cz;
+    const dist = Math.sqrt(dx * dx + dy * dy + dz * dz);
+    if (dist < scatterRadius && dist > 0.001) {
+      const factor = impulseMag / dist;
+      p.vx += dx * factor;
+      p.vy += dy * factor;
+      p.vz += dz * factor;
+    }
+  }
+}
+
 function computeWave1Group(
   particles: IParticleV2[],
   revealMode: "anatomical" | "random",
@@ -84,6 +166,166 @@ function computeWave1Group(
     wave1Indices = shuffled.slice(0, wave1Count);
   }
   wave1SetRef.current = new Set(wave1Indices);
+}
+
+/** Scratch Vector3 reused every frame to avoid per-frame allocations. */
+const _scratchCamDir = new Vector3();
+
+/** Cubic ease-in-out (smootherstep). */
+function cubicEase(t: number): number {
+  return t * t * (3 - 2 * t);
+}
+
+/**
+ * Returns an emerge fraction (0–1) for a given elapsed time within a Beat 3
+ * hint cycle.  Phase timing:
+ *   0 – 1.2 s  : quintic ease-in-out emerge (slow swell build)
+ *   1.2 – 2.0 s: hold at peak (brief crest before receding)
+ *   2.0 – 3.8 s: quintic ease-in-out retract (long, graceful recession)
+ *   3.8 – 4.2 s: gap (return 0)
+ */
+
+// Quintic ease-in-out: much smoother than cubic, imperceptible at extremes
+function quinticEase(t: number): number {
+  return t * t * t * (t * (t * 6 - 15) + 10);
+}
+
+function computeHintEmergeFraction(t: number): number {
+  const EMERGE = 1.2;
+  const HOLD = 0.8;
+  const RETRACT = 1.8;
+  if (t <= 0) return 0;
+  if (t < EMERGE) {
+    return quinticEase(t / EMERGE);
+  }
+  if (t < EMERGE + HOLD) return 1.0;
+  if (t < EMERGE + HOLD + RETRACT) {
+    return 1 - quinticEase((t - EMERGE - HOLD) / RETRACT);
+  }
+  return 0;
+}
+
+/**
+ * Picks a random anchor particle index, weighted by dramatic importance:
+ * - Top 20% by homeY (head/face): weight 5
+ * - Extreme X positions (hands/arms/wings): weight 3
+ * - Remaining: weight 1
+ * Never picks within radius 0.3 of the previous anchor's home position.
+ */
+function pickWeightedAnchorIndex(
+  particles: IParticleV2[],
+  primaryCount: number,
+  prevAnchorIdx: number,
+): number {
+  if (primaryCount === 0) return 0;
+
+  let minY = Infinity,
+    maxY = -Infinity,
+    maxXAbs = 0;
+  for (let i = 0; i < primaryCount; i++) {
+    const p = particles[i];
+    if (p.homeY < minY) minY = p.homeY;
+    if (p.homeY > maxY) maxY = p.homeY;
+    const ax = Math.abs(p.homeX);
+    if (ax > maxXAbs) maxXAbs = ax;
+  }
+  const yRange = maxY - minY + 0.001;
+
+  const prevAnchor =
+    prevAnchorIdx >= 0 && prevAnchorIdx < primaryCount
+      ? particles[prevAnchorIdx]
+      : null;
+
+  const weights = new Float32Array(primaryCount);
+  for (let i = 0; i < primaryCount; i++) {
+    const p = particles[i];
+    if (prevAnchor !== null) {
+      const dx = p.homeX - prevAnchor.homeX;
+      const dy = p.homeY - prevAnchor.homeY;
+      const dz = p.homeZ - prevAnchor.homeZ;
+      if (dx * dx + dy * dy + dz * dz < 0.09) {
+        weights[i] = 0;
+        continue;
+      }
+    }
+    const yNorm = (p.homeY - minY) / yRange;
+    const xNorm = Math.abs(p.homeX) / (maxXAbs + 0.001);
+    if (yNorm > 0.8) {
+      weights[i] = 5;
+    } else if (xNorm > 0.7) {
+      weights[i] = 3;
+    } else {
+      weights[i] = 1;
+    }
+  }
+
+  // Boost weights for high-curvature regions (normal variation among neighbors).
+  // Particles at surface creases — face, hands, torso edges — have normals that
+  // diverge from their neighbors, making them more visually interesting anchors.
+  const curvRadius2 = 0.09; // 0.3² local neighborhood
+  const curvStep = Math.max(1, Math.floor(primaryCount / 40)); // ~40 neighbor samples
+  for (let i = 0; i < primaryCount; i++) {
+    if (weights[i] === 0) continue;
+    const pi = particles[i];
+    let curvSum = 0;
+    let curvCnt = 0;
+    for (let j = 0; j < primaryCount; j += curvStep) {
+      const pj = particles[j];
+      const dx = pj.homeX - pi.homeX;
+      const dy = pj.homeY - pi.homeY;
+      const dz = pj.homeZ - pi.homeZ;
+      if (dx * dx + dy * dy + dz * dz < curvRadius2) {
+        const dot =
+          pi.normalX * pj.normalX +
+          pi.normalY * pj.normalY +
+          pi.normalZ * pj.normalZ;
+        curvSum += 1 - dot;
+        curvCnt++;
+      }
+    }
+    const curvature = curvCnt > 0 ? curvSum / curvCnt : 0;
+    weights[i] *= 1 + curvature * 4; // up to 5× boost at high-curvature regions
+  }
+
+  let total = 0;
+  for (let i = 0; i < primaryCount; i++) total += weights[i];
+  if (total <= 0) return 0;
+
+  let r = Math.random() * total;
+  for (let i = 0; i < primaryCount; i++) {
+    r -= weights[i];
+    if (r <= 0) return i;
+  }
+  return 0;
+}
+
+/**
+ * Applies an outward velocity impulse to orbit/swarm particles near the
+ * given world-space point, simulating marble-dust debris scatter.
+ */
+function applyDebrisScatterAtPoint(
+  particles: IParticleV2[],
+  primaryCount: number,
+  cx: number,
+  cy: number,
+  cz: number,
+  totalCount: number,
+): void {
+  const scatterRadius = 0.8;
+  const impulseMag = 0.015;
+  for (let i = primaryCount; i < totalCount; i++) {
+    const p = particles[i];
+    const dx = p.x - cx;
+    const dy = p.y - cy;
+    const dz = p.z - cz;
+    const dist = Math.sqrt(dx * dx + dy * dy + dz * dz);
+    if (dist < scatterRadius && dist > 0.001) {
+      const factor = impulseMag / dist;
+      p.vx += dx * factor;
+      p.vy += dy * factor;
+      p.vz += dz * factor;
+    }
+  }
 }
 
 // ── Types ─────────────────────────────────────────────────────────────────────
@@ -110,6 +352,8 @@ interface IBreakawayState {
 export interface ISceneV2Props {
   beat: TBeat;
   particleCount: number;
+  /** Particle count for the static surface skin layer (SkinParticleSystem). Defaults to PARTICLE_CAPACITY. */
+  skinParticleCount?: number;
   particleSize: number;
   color: string;
   opacity: number;
@@ -121,7 +365,8 @@ export interface ISceneV2Props {
   hintSpeed?: "subtle" | "slow" | "medium";
   /** Controls timing of sub-phases in Beat 4 (Reveal). */
   revealPacing?: "dramatic" | "burst" | "current";
-  beatDurationMs?: number;
+  /** Current beat's duration in seconds. Used to scale transition speeds. */
+  beatDuration?: number;
   onBeatProgress?: (progress: number) => void;
   /** Registration callback: SceneV2 passes its scatter-reset function to the parent on mount. */
   onReset?: (resetFn: () => void) => void;
@@ -129,6 +374,8 @@ export interface ISceneV2Props {
   debugCamera?: { x: number; y: number; z: number; lookAtY: number };
   /** Debug: when provided, sets the particle group's rotation each frame. */
   debugMeshRotation?: { x: number; y: number; z: number };
+  /** Debug: uniform scale applied to the figure mesh group each frame. */
+  figureScale?: number;
   /** When true (Beat 5), OrbitControls are enabled and camera lerp is paused. */
   orbitEnabled?: boolean;
   /** Controls how surface particles move during Beat 5 (Approved). */
@@ -137,6 +384,88 @@ export interface ISceneV2Props {
   surfaceDepthBias?: TSurfaceDepthBias;
   /** Controls how particle size varies based on surface orientation to camera during Beat 5. */
   depthSizing?: TDepthSizing;
+  /** Controls depth/normal opacity variation on swarm particles (Off / Subtle / Strong). */
+  depthOpacityMode?: TDepthOpacityMode;
+  /** Uniform scale applied to the cube geometry in Beats 2/3 (default 2.5). */
+  cubeScale?: number;
+  /** Number of breathe-out-and-back cycles during Beat 3 Hint (1–4, default 2). */
+  hintCycles?: number;
+  /** Controls the wave shape of particle emergence within each Beat 3 hint cycle. */
+  hintStyle?: THintStyle;
+  /** Blob radius in world units for Beat 3 hint activation (0.2–1.0, default 0.4). */
+  hintSpread?: number;
+  /** Controls the spatial shape of the activation region in Beat 3 hint cycles. */
+  hintShape?: THintShape;
+  /** Number of sequential body regions that break free one-by-one in Beat 4 Reveal (1–6, default 4). */
+  revealStages?: number;
+  /** Speed at which the ripple wave front expands during Beats 3 & 4.
+   *  Internally scaled by waveMaxDist × 0.15 per second, so 1.5 = comfortable default pace. */
+  waveSpeed?: number;
+}
+
+// ── Helpers ───────────────────────────────────────────────────────────────────
+
+/**
+ * Applies a rotation+scale transform to all particles' homeX/Y/Z using the
+ * provided raw (unrotated) mesh-space positions. Mirrors the transform that
+ * figureGroupRef applies to SkinParticleSystem so swarm particle home targets
+ * stay in sync with the visually-rotated figure mesh.
+ *
+ * After transforming, the centroid of all home positions is subtracted so the
+ * figure is always centered at the world origin. This prevents a visual shift
+ * when particles transition from cube targets (centered at origin) to figure
+ * targets — the "center of mass" of the figure particle cloud matches the cube.
+ *
+ * Returns the centroid that was subtracted (in world space). The caller uses
+ * this to apply an equal-and-opposite position offset to figureGroupRef so
+ * the SkinParticleSystem (which renders the raw uncentered mesh positions) stays
+ * visually co-located with the centroid-adjusted swarm particle cloud.
+ */
+function applyRotationToHomes(
+  particles: IParticleV2[],
+  rawPos: Float32Array,
+  rotation: { x: number; y: number; z: number },
+  scale: number,
+): { x: number; y: number; z: number } {
+  const matrix = new Matrix4();
+  matrix.makeRotationFromEuler(new Euler(rotation.x, rotation.y, rotation.z));
+  matrix.scale(new Vector3(scale, scale, scale));
+  const v = new Vector3();
+  // Count how many particles were actually written (may be capped by rawPos length)
+  let written = 0;
+  for (let i = 0; i < particles.length; i++) {
+    const o = i * 3;
+    if (o + 2 >= rawPos.length) break;
+    v.set(rawPos[o], rawPos[o + 1], rawPos[o + 2]);
+    v.applyMatrix4(matrix);
+    particles[i].homeX = v.x;
+    particles[i].homeY = v.y;
+    particles[i].homeZ = v.z;
+    written++;
+  }
+
+  // Center the figure: subtract the centroid of transformed home positions so
+  // the figure center of mass sits at (0,0,0), matching the cube geometry used
+  // in earlier beats. Without this, the particle swarm visibly shifts when
+  // transitioning from cube targets to figure targets.
+  if (written === 0) return { x: 0, y: 0, z: 0 };
+  let cx = 0,
+    cy = 0,
+    cz = 0;
+  for (let i = 0; i < written; i++) {
+    cx += particles[i].homeX;
+    cy += particles[i].homeY;
+    cz += particles[i].homeZ;
+  }
+  cx /= written;
+  cy /= written;
+  cz /= written;
+  for (let i = 0; i < written; i++) {
+    particles[i].homeX -= cx;
+    particles[i].homeY -= cy;
+    particles[i].homeZ -= cz;
+  }
+  return { x: cx, y: cy, z: cz };
 }
 
 // ── Component ─────────────────────────────────────────────────────────────────
@@ -145,6 +474,7 @@ export default function SceneV2(props: ISceneV2Props) {
   const {
     beat,
     particleCount,
+    skinParticleCount = PARTICLE_CAPACITY,
     particleSize,
     color,
     opacity,
@@ -153,15 +483,24 @@ export default function SceneV2(props: ISceneV2Props) {
     formTransition = "drift",
     hintSpeed = "slow",
     revealPacing = "current",
-    beatDurationMs = 8000,
+    beatDuration = 8,
     onBeatProgress,
     onReset,
     debugCamera,
     debugMeshRotation,
+    figureScale = 1.0,
     orbitEnabled = false,
     surfaceMotion = "flow",
     surfaceDepthBias = "uniform",
     depthSizing = "flat",
+    depthOpacityMode = "off",
+    cubeScale = 2.5,
+    hintCycles = 3,
+    hintStyle = "bulge",
+    hintSpread = 0.4,
+    hintShape = "blob",
+    revealStages = 4,
+    waveSpeed = 1.5,
   } = props;
 
   // Keep stable refs to latest props so useFrame closures always read fresh values
@@ -185,12 +524,30 @@ export default function SceneV2(props: ISceneV2Props) {
   hintSpeedRef.current = hintSpeed;
   const revealPacingRef = useRef(revealPacing);
   revealPacingRef.current = revealPacing;
+  const cubeScaleRef = useRef(cubeScale);
+  cubeScaleRef.current = cubeScale;
+  const hintCyclesRef = useRef(hintCycles);
+  hintCyclesRef.current = hintCycles;
+  /** Effective hint cycles for the current beat 3 run, computed from beatDuration at entry. */
+  const hintCyclesEffectiveRef = useRef(hintCycles);
+  const hintStyleRef = useRef(hintStyle);
+  hintStyleRef.current = hintStyle;
+  const hintSpreadRef = useRef(hintSpread);
+  hintSpreadRef.current = hintSpread;
+  const hintShapeRef = useRef(hintShape);
+  hintShapeRef.current = hintShape;
+  const revealStagesRef = useRef(revealStages);
+  revealStagesRef.current = revealStages;
+  const waveSpeedRef = useRef(waveSpeed);
+  waveSpeedRef.current = waveSpeed;
 
   // ── Geometry & surface samples ────────────────────────────────────────────
 
   const geometryRef = useRef<BufferGeometry | null>(null);
   const homePositionsRef = useRef(new Float32Array(0));
   const homeNormalsRef = useRef(new Float32Array(0));
+  /** Original mesh-space (unrotated) home positions. Never mutated after sampling — used as the source of truth when re-applying debugMeshRotation transforms. */
+  const rawHomePositionsRef = useRef(new Float32Array(0));
   const geometryLoadedRef = useRef(false);
 
   // State-driven so the render re-runs when geometry/particles are ready
@@ -200,6 +557,24 @@ export default function SceneV2(props: ISceneV2Props) {
   // ── Shape targets (stable, rebuilt when particleCount changes) ────────────
 
   const cubeTargetsRef = useRef(new Float32Array(0));
+  /**
+   * Spatially-sorted cube targets: cubeTargets[i] is reassigned to the closest
+   * available cube surface point to particles[i].homeX/Y/Z. This ensures that
+   * each particle's cube position is geometrically near its figure-home position,
+   * so transitions always feel local rather than particles flying across the scene.
+   * Rebuilt whenever cube targets or home positions change.
+   */
+  const sortedCubeTargetsRef = useRef(new Float32Array(0));
+  /** World-space origin of the ripple wave (centroid of top-20% homeY particles). */
+  const waveOriginRef = useRef<{ x: number; y: number; z: number }>({
+    x: 0,
+    y: 0,
+    z: 0,
+  });
+  /** Max distance from waveOrigin to any primary particle's home position. */
+  const waveMaxDistRef = useRef<number>(1.5);
+  /** Current wave radius for Beat 4 monotonic reveal; reset to 0 each time Beat 4 begins. */
+  const waveRadiusBeat4Ref = useRef<number>(0);
 
   // ── Particle simulation state ─────────────────────────────────────────────
 
@@ -244,10 +619,21 @@ export default function SceneV2(props: ISceneV2Props) {
 
   const shapeRotationRef = useRef(0);
   const shapeRotationXRef = useRef(0);
-
+  /** Cube rotation Y-angle at the moment Beat 4 begins — used to smoothly wind down to 0. */
+  const beat4EntryRotYRef = useRef(0);
+  /** Cube rotation X-angle at the moment Beat 4 begins — used to smoothly wind down to 0. */
+  const beat4EntryRotXRef = useRef(0);
+  /**
+   * Particle positions (x/y/z) captured at the moment Beat 4 begins.
+   * Used to blend targets from entry positions toward wave-based targets over
+   * warmupDuration4 seconds so particles never jump (collapse through center).
+   * Flat Float32Array: [x0,y0,z0, x1,y1,z1, ...] for primaryCount particles.
+   */
+  const beat4EntryPosRef = useRef<Float32Array>(new Float32Array(0));
   // ── Beat 2 cascade state ──────────────────────────────────────────────────
 
   const beat2StartTimeRef = useRef(-1);
+  const beat5StartTimeRef = useRef(-1);
 
   // ── Beat 4 multi-wave reveal state ────────────────────────────────────────
 
@@ -255,12 +641,33 @@ export default function SceneV2(props: ISceneV2Props) {
   const wave1SetRef = useRef<Set<number>>(new Set());
   const sessionSeedRef = useRef(Math.floor(Math.random() * 1_000_000));
 
+  // ── Marble emergence (Beats 3 & 4) ───────────────────────────────────────
+
+  /** Per-particle region index: 0 = top (most dramatic), N-1 = bottom. */
+  const regionIndexRef = useRef<Float32Array>(new Float32Array(0));
+  /** Beat 3: total elapsed time since Beat 3 began (seconds). */
+  const hintPhaseRef = useRef(0.0);
+  /** Beat 3: clock time when Beat 3 started (for hint phase calculation). */
+  const beat3StartTimeRef = useRef(-1);
+  /** Beat 3: which cycle index last triggered a debris scatter (prevents per-frame repeat). */
+  const lastDebrisCycleRef = useRef(-1);
+  /**
+   * Beat 3: anchor particle indices for each hint cycle.
+   * Generated at Beat 3 entry using weighted-random sampling biased toward
+   * dramatically important regions (head, extremities).
+   */
+  const hintAnchorIndicesRef = useRef<number[]>([]);
+  /** Beat 4: current active reveal stage (region index, 0 = first to emerge). */
+  const revealStageRef = useRef(0);
+  /** Beat 4: last stage index that triggered debris scatter (prevents repeat). */
+  const lastRevealStageRef = useRef(-1);
+
   // ── Beat progress callback refs ───────────────────────────────────────────
 
   const onBeatProgressRef = useRef(onBeatProgress);
   onBeatProgressRef.current = onBeatProgress;
-  const beatDurationMsRef = useRef(beatDurationMs);
-  beatDurationMsRef.current = beatDurationMs;
+  const beatDurationRef = useRef(beatDuration);
+  beatDurationRef.current = beatDuration;
   const beatProgressStartTimeRef = useRef<number>(-1);
   const prevBeatForProgressRef = useRef<TBeat>(beat);
 
@@ -274,9 +681,13 @@ export default function SceneV2(props: ISceneV2Props) {
   debugCameraRef.current = debugCamera;
   const debugMeshRotationRef = useRef(debugMeshRotation);
   debugMeshRotationRef.current = debugMeshRotation;
+  const figureScaleRef = useRef(figureScale);
+  figureScaleRef.current = figureScale;
   const groupRef = useRef<Group | null>(null);
   /** Separate ref for the figure mesh group so debugMeshRotation only affects the figure, not particles. */
   const figureGroupRef = useRef<Group | null>(null);
+  /** Ref to the OrbitControls instance — used to sync target on first orbit-enable frame. */
+  const orbitControlsRef = useRef<ThreeOrbitControls | null>(null);
 
   // ── Particle scatter-reset (exposed to parent via onReset prop) ───────────
 
@@ -313,19 +724,80 @@ export default function SceneV2(props: ISceneV2Props) {
       p.queuedTurnZ = 0;
     }
     // Recompute targets for the current beat now that initialX/Y/Z are updated
-    setTargetsForBeat(
-      particles,
-      beatRef.current,
-      cubeTargetsRef.current,
-    );
+    setTargetsForBeat(particles, beatRef.current, cubeTargetsRef.current);
   };
   // Stable wrapper — registered with parent once on mount
   const stableResetRef = useRef(() => resetRef.current());
 
   // ── Swarm centroid (for SkinParticleSystem proximity reveal) ─────────────
 
-  const centroidRef = useRef({ x: 0, y: 0, z: 0 });
+  // Mutated in place every frame so SkinParticleSystem.useFrame always reads
+  // the latest value via its closed-over prop reference — no snap at beat
+  // transitions from a frozen centroid.
   const skinCentroidRef = useRef({ x: 0, y: 0, z: 0 });
+
+  // Negative of the centroid subtracted by applyRotationToHomes. Applied as
+  // figureGroupRef.position so the SkinParticleSystem (which renders raw,
+  // uncentered mesh positions) aligns with the centroid-adjusted swarm cloud.
+  const figureOffsetRef = useRef({ x: 0, y: 0, z: 0 });
+
+  // ── Wave & sorted-target helpers ─────────────────────────────────────────
+
+  /**
+   * Rebuilds sortedCubeTargetsRef and recomputes wave origin / max-distance.
+   * Must be called after EITHER homeX/Y/Z values change (applyRotationToHomes)
+   * OR cubeTargets change (generateCubeTargets). Both must be populated first.
+   */
+  function rebuildWaveAndSortedTargets(): void {
+    const particles = particlesRef.current;
+    const n = particles.length;
+    if (n === 0 || cubeTargetsRef.current.length < n * 3) return;
+
+    sortedCubeTargetsRef.current = reassignCubeTargetsByProximity(
+      particles,
+      cubeTargetsRef.current,
+    );
+
+    const orbitCount = Math.ceil(n * 0.06);
+    const primaryCount = n - orbitCount;
+    if (primaryCount === 0) return;
+
+    // Wave origin = centroid of top 20% particles by homeY
+    let maxY = -Infinity,
+      minY = Infinity;
+    for (let i = 0; i < primaryCount; i++) {
+      if (particles[i].homeY > maxY) maxY = particles[i].homeY;
+      if (particles[i].homeY < minY) minY = particles[i].homeY;
+    }
+    const threshold = minY + (maxY - minY) * 0.8;
+    let cx = 0,
+      cy = 0,
+      cz = 0,
+      cnt = 0;
+    for (let i = 0; i < primaryCount; i++) {
+      if (particles[i].homeY >= threshold) {
+        cx += particles[i].homeX;
+        cy += particles[i].homeY;
+        cz += particles[i].homeZ;
+        cnt++;
+      }
+    }
+    const ox = cnt > 0 ? cx / cnt : 0;
+    const oy = cnt > 0 ? cy / cnt : maxY;
+    const oz = cnt > 0 ? cz / cnt : 0;
+    waveOriginRef.current = { x: ox, y: oy, z: oz };
+
+    // Max distance from wave origin to any primary particle
+    let maxDist = 0;
+    for (let i = 0; i < primaryCount; i++) {
+      const ddx = particles[i].homeX - ox;
+      const ddy = particles[i].homeY - oy;
+      const ddz = particles[i].homeZ - oz;
+      const d = Math.sqrt(ddx * ddx + ddy * ddy + ddz * ddz);
+      if (d > maxDist) maxDist = d;
+    }
+    waveMaxDistRef.current = Math.max(maxDist, 0.5);
+  }
 
   // ── Load model on mount ───────────────────────────────────────────────────
 
@@ -343,18 +815,34 @@ export default function SceneV2(props: ISceneV2Props) {
       const samples = sampleMeshSurface(geom, count, "areaWeighted");
       homePositionsRef.current = samples.positions;
       homeNormalsRef.current = samples.normals;
+      // Store a copy of unrotated positions as the permanent source of truth
+      rawHomePositionsRef.current = new Float32Array(samples.positions);
 
       // Shape targets (same count)
-      cubeTargetsRef.current = generateCubeTargets(count, 1.2);
+      cubeTargetsRef.current = generateCubeTargets(count, cubeScaleRef.current);
 
       // Create particles with home positions
       particlesRef.current = createParticlesV2(samples.positions, count);
+
+      // Assign surface normals — createParticlesV2 leaves all normals as (0,1,0) by default;
+      // the shader needs the actual mesh-surface normals for depthOpacityStrength to work.
+      const surfaceNormals = homeNormalsRef.current;
+      for (let i = 0; i < count; i++) {
+        particlesRef.current[i].normalX = surfaceNormals[i * 3];
+        particlesRef.current[i].normalY = surfaceNormals[i * 3 + 1];
+        particlesRef.current[i].normalZ = surfaceNormals[i * 3 + 2];
+      }
+
       const orbitCt = Math.ceil(count * 0.06);
       primaryParticlesRef.current = particlesRef.current.slice(
         0,
         count - orbitCt,
       );
       orbitParticlesRef.current = particlesRef.current.slice(count - orbitCt);
+
+      // Allocate region index array (filled after rotation is applied in the
+      // debugMeshRotation effect, which fires due to particleCount_ready change)
+      regionIndexRef.current = new Float32Array(count);
 
       // Pre-compute stable random spherical directions for orbit particles.
       // Using random unit vectors (not homeX/Y/Z model-surface samples) gives
@@ -412,13 +900,26 @@ export default function SceneV2(props: ISceneV2Props) {
     const samples = sampleMeshSurface(geom, count, "areaWeighted");
     homePositionsRef.current = samples.positions;
     homeNormalsRef.current = samples.normals;
+    rawHomePositionsRef.current = new Float32Array(samples.positions);
 
-    cubeTargetsRef.current = generateCubeTargets(count, 1.2);
+    cubeTargetsRef.current = generateCubeTargets(count, cubeScaleRef.current);
 
     particlesRef.current = createParticlesV2(samples.positions, count);
+
+    // Assign surface normals for depthOpacityStrength shader effect
+    const surfaceNormals2 = homeNormalsRef.current;
+    for (let i = 0; i < count; i++) {
+      particlesRef.current[i].normalX = surfaceNormals2[i * 3];
+      particlesRef.current[i].normalY = surfaceNormals2[i * 3 + 1];
+      particlesRef.current[i].normalZ = surfaceNormals2[i * 3 + 2];
+    }
+
     const oc = Math.ceil(count * 0.06);
     primaryParticlesRef.current = particlesRef.current.slice(0, count - oc);
     orbitParticlesRef.current = particlesRef.current.slice(count - oc);
+
+    // Allocate fresh region index array (filled after rotation is applied)
+    regionIndexRef.current = new Float32Array(count);
 
     const newDirs = new Float32Array(oc * 3);
     for (let i = 0; i < oc; i++) {
@@ -461,14 +962,110 @@ export default function SceneV2(props: ISceneV2Props) {
     );
     homePositionsRef.current = samples.positions;
     homeNormalsRef.current = samples.normals;
+    rawHomePositionsRef.current = new Float32Array(samples.positions);
 
+    // Apply the current rotation/scale transform so home targets reflect the
+    // oriented figure, not the raw unrotated mesh positions.
+    const rot = debugMeshRotationRef.current ?? { x: -1.59, y: 0.01, z: -0.19 };
+    const centroid = applyRotationToHomes(
+      particles,
+      rawHomePositionsRef.current,
+      rot,
+      figureScaleRef.current,
+    );
+    // Keep figureGroupRef offset in sync so the skin mesh aligns with the
+    // centroid-adjusted swarm particle cloud.
+    figureOffsetRef.current.x = -centroid.x;
+    figureOffsetRef.current.y = -centroid.y;
+    figureOffsetRef.current.z = -centroid.z;
+
+    // Recompute region indices using the newly oriented homeY values
+    if (regionIndexRef.current.length !== count) {
+      regionIndexRef.current = new Float32Array(count);
+    }
+    computeRegionIndices(
+      particles,
+      regionIndexRef.current,
+      revealStagesRef.current,
+    );
+
+    // Rebuild spatially-matched cube targets and wave metrics (homes changed)
+    rebuildWaveAndSortedTargets();
+
+    // Propagate new per-particle normals so depthOpacityStrength reflects the new surface sampling.
+    // ParticleSystemV2.useFrame reads p.normalX/Y/Z each frame and uploads to the GPU buffer.
+    const rebiasedNormals = homeNormalsRef.current;
     for (let i = 0; i < count; i++) {
-      const o = i * 3;
-      particles[i].homeX = samples.positions[o];
-      particles[i].homeY = samples.positions[o + 1];
-      particles[i].homeZ = samples.positions[o + 2];
+      particles[i].normalX = rebiasedNormals[i * 3];
+      particles[i].normalY = rebiasedNormals[i * 3 + 1];
+      particles[i].normalZ = rebiasedNormals[i * 3 + 2];
     }
   }, [surfaceDepthBias]);
+
+  // ── Regenerate cube targets when cubeScale changes ────────────────────────
+
+  useEffect(() => {
+    if (!geometryLoadedRef.current) return;
+    const particles = particlesRef.current;
+    if (particles.length === 0) return;
+    cubeTargetsRef.current = generateCubeTargets(particles.length, cubeScale);
+    // Rebuild sorted targets since cube positions changed (homes are unchanged)
+    rebuildWaveAndSortedTargets();
+    setTargetsForBeat(particles, beatRef.current, cubeTargetsRef.current);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [cubeScale]);
+
+  // ── Recompute region indices when revealStages slider changes ────────────
+
+  useEffect(() => {
+    const particles = particlesRef.current;
+    if (particles.length === 0) return;
+    if (regionIndexRef.current.length !== particles.length) {
+      regionIndexRef.current = new Float32Array(particles.length);
+    }
+    computeRegionIndices(particles, regionIndexRef.current, revealStages);
+  }, [revealStages]);
+
+  // ── Re-apply rotation/scale to home positions when debug controls change ──
+
+  useEffect(() => {
+    const particles = particlesRef.current;
+    const rawPos = rawHomePositionsRef.current;
+    if (particles.length === 0 || rawPos.length === 0) return;
+
+    const rot = debugMeshRotation ?? { x: -1.59, y: 0.01, z: -0.19 };
+    const centroid = applyRotationToHomes(particles, rawPos, rot, figureScale);
+    // Keep figureGroupRef offset in sync so the skin mesh aligns with the
+    // centroid-adjusted swarm particle cloud.
+    figureOffsetRef.current.x = -centroid.x;
+    figureOffsetRef.current.y = -centroid.y;
+    figureOffsetRef.current.z = -centroid.z;
+
+    // Recompute region indices using updated homeY values
+    if (regionIndexRef.current.length !== particles.length) {
+      regionIndexRef.current = new Float32Array(particles.length);
+    }
+    computeRegionIndices(
+      particles,
+      regionIndexRef.current,
+      revealStagesRef.current,
+    );
+
+    // Rebuild spatially-matched cube targets and wave metrics now that homes changed
+    rebuildWaveAndSortedTargets();
+
+    // Immediately refresh targets so Beat 5 surface targets reflect new orientation
+    if (beatRef.current === 5) {
+      setTargetsForBeat(particles, 5, cubeTargetsRef.current);
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [
+    debugMeshRotation?.x,
+    debugMeshRotation?.y,
+    debugMeshRotation?.z,
+    figureScale,
+    particleCount_ready,
+  ]);
 
   // ── React to beat changes ─────────────────────────────────────────────────
 
@@ -492,15 +1089,19 @@ export default function SceneV2(props: ISceneV2Props) {
     }
 
     // Set target positions for the incoming beat
-    setTargetsForBeat(
-      particles,
-      beat,
-      cubeTargetsRef.current,
-    );
+    setTargetsForBeat(particles, beat, cubeTargetsRef.current);
 
     // Rebuild shape targets for beats 2/3 when shape might have changed
     if (beat === 2 || beat === 3) {
-      cubeTargetsRef.current = generateCubeTargets(particles.length, 1.2);
+      cubeTargetsRef.current = generateCubeTargets(
+        particles.length,
+        cubeScaleRef.current,
+      );
+      // Rebuild spatially-matched targets so local transitions are preserved
+      sortedCubeTargetsRef.current = reassignCubeTargetsByProximity(
+        particles,
+        cubeTargetsRef.current,
+      );
     }
 
     // Reset cascade timer when entering beat 2
@@ -508,16 +1109,82 @@ export default function SceneV2(props: ISceneV2Props) {
       beat2StartTimeRef.current = -1; // initialized on first useFrame tick
     }
 
-    // Initialize beat 4 multi-wave reveal
-    if (beat === 4) {
-      beat4StartTimeRef.current = -1; // reset; initialized on first useFrame tick
-      computeWave1Group(
-        particles,
-        revealModeRef.current,
-        particles.length,
-        sessionSeedRef.current,
-        wave1SetRef,
+    // Reset Beat 3 breathing-cycle state and generate anchor indices
+    if (beat === 3) {
+      beat3StartTimeRef.current = -1;
+      hintPhaseRef.current = 0;
+      lastDebrisCycleRef.current = -1;
+      // Zero velocities from Beat 2's lerp system to prevent sudden spring excitation
+      const primaryCt3 = particles.length - Math.ceil(particles.length * 0.06);
+      for (let i = 0; i < primaryCt3; i++) {
+        particles[i].vx = 0;
+        particles[i].vy = 0;
+        particles[i].vz = 0;
+      }
+
+      // Compute effective cycles to fill the configured beat duration.
+      hintCyclesEffectiveRef.current = Math.max(
+        1,
+        Math.round(beatDurationRef.current / CYCLE_DUR),
       );
+
+      // Pick one anchor particle index per hint cycle, weighted toward dramatic
+      // areas (head, extremities) and never too close to the previous anchor.
+      const primaryCt = particles.length - Math.ceil(particles.length * 0.06);
+      const anchorIndices: number[] = [];
+      let prevIdx = -1;
+      for (let ci = 0; ci < hintCyclesEffectiveRef.current; ci++) {
+        const next = pickWeightedAnchorIndex(particles, primaryCt, prevIdx);
+        anchorIndices.push(next);
+        prevIdx = next;
+      }
+      hintAnchorIndicesRef.current = anchorIndices;
+    }
+
+    // Reset Beat 4 staged reveal state; reset wave radius for new reveal pass
+    if (beat === 4) {
+      // Snapshot Beat 3's cube rotation so Beat 4 can smoothly unwind it to 0
+      // instead of jumping to the unrotated cube targets and causing a rush/collapse.
+      beat4EntryRotYRef.current = shapeRotationRef.current;
+      beat4EntryRotXRef.current = shapeRotationXRef.current;
+      beat4StartTimeRef.current = -1; // reset; initialized on first useFrame tick
+      revealStageRef.current = 0;
+      lastRevealStageRef.current = -1;
+      // Start the wave already covering the most dramatic region (head/top area)
+      // so hint particles that were emerged near the figure don't collapse back to
+      // the cube before the wave catches them.
+      waveRadiusBeat4Ref.current = waveMaxDistRef.current * 0.25;
+      // Zero Beat 3 spring velocities so they don't carry into Beat 4's warmup spring
+      // and cause oscillation (jitter). Beat 3 uses damping3=0.7, leaving significant
+      // residual velocity that interacts destructively with Beat 4's spring forces.
+      const primaryCt4 = particles.length - Math.ceil(particles.length * 0.06);
+      for (let i = 0; i < primaryCt4; i++) {
+        particles[i].vx = 0;
+        particles[i].vy = 0;
+        particles[i].vz = 0;
+      }
+      // Capture current positions so Beat 4 targets blend from here — not from the
+      // unrotated cube targets — during the warmup window. This prevents the collapse
+      // (particles rushing through the center) that occurs when Beat 3's rotated cube
+      // positions are suddenly replaced by Beat 4's unrotated figure targets.
+      const entryPosBuf = new Float32Array(primaryCt4 * 3);
+      for (let i = 0; i < primaryCt4; i++) {
+        entryPosBuf[i * 3] = particles[i].x;
+        entryPosBuf[i * 3 + 1] = particles[i].y;
+        entryPosBuf[i * 3 + 2] = particles[i].z;
+      }
+      beat4EntryPosRef.current = entryPosBuf;
+    }
+
+    // Beat 5 entry: zero out accumulated spring velocities from Beat 4 so the
+    // transition from spring physics → lerp doesn't cause a sudden position jump.
+    if (beat === 5) {
+      beat5StartTimeRef.current = -1; // initialized on first useFrame tick
+      for (let i = 0; i < particles.length; i++) {
+        particles[i].vx = 0;
+        particles[i].vy = 0;
+        particles[i].vz = 0;
+      }
     }
 
     transitionRef.current = {
@@ -530,6 +1197,20 @@ export default function SceneV2(props: ISceneV2Props) {
 
     prevBeatRef.current = beat;
   }, [beat]);
+
+  // ── Sync OrbitControls target when orbit is first enabled ─────────────────
+  //
+  // The manual camera code calls camera.lookAt(0, 0.2, 0) for all non-Beat-0
+  // beats. When OrbitControls becomes enabled (Beat 5), its internal target
+  // defaults to (0, 0, 0). The first controls.update() call then snaps the
+  // camera to look at (0, 0, 0) instead of (0, 0.2, 0), causing the figure
+  // to visually jump ~40 px upward. Setting the target here — before the first
+  // OrbitControls update() fires — keeps the camera orientation continuous.
+
+  useEffect(() => {
+    if (!orbitEnabled || !orbitControlsRef.current) return;
+    orbitControlsRef.current.target.set(0, 0.2, 0);
+  }, [orbitEnabled]);
 
   // ── Per-frame simulation ──────────────────────────────────────────────────
 
@@ -560,32 +1241,21 @@ export default function SceneV2(props: ISceneV2Props) {
     const primaryCount = n - orbitCount;
 
     // ── Orbit particle targets (beat-conditional) ────────────────────────────
-    // Beats 0/1: large atmospheric sphere so particles look like a halo around the scene.
+    // Beats 0/1: orbit particles blend into the ring (no separate sphere halo).
     // Beats 2/3: orbit particles follow the SAME geometric shape as primary particles.
     // Beat 4:    tighter sphere orbit close to the figure surface (radius 0.9).
     // Beat 5:    breakaway behavior — most particles sit on the surface, occasional
     //            small groups briefly orbit then return.
     if (currentBeat <= 1) {
-      const dirs = orbitDirsRef.current;
-      for (let i = primaryCount; i < n; i++) {
-        const p = particles[i];
-        const di = (i - primaryCount) * 3;
-        if (di + 2 < dirs.length) {
-          p.targetX = dirs[di] * 1.5;
-          p.targetY = dirs[di + 1] * 1.5;
-          p.targetZ = dirs[di + 2] * 1.5;
-        }
-      }
+      // In beats 0/1 orbit particles just follow boid forces like primary particles —
+      // no separate sphere target so they stay within the ring.
     } else if (currentBeat === 4) {
-      const dirs = orbitDirsRef.current;
+      // Orbit particles target the figure surface (same as primary particles).
       for (let i = primaryCount; i < n; i++) {
         const p = particles[i];
-        const di = (i - primaryCount) * 3;
-        if (di + 2 < dirs.length) {
-          p.targetX = dirs[di] * 0.9;
-          p.targetY = dirs[di + 1] * 0.9;
-          p.targetZ = dirs[di + 2] * 0.9;
-        }
+        p.targetX = p.homeX;
+        p.targetY = p.homeY;
+        p.targetZ = p.homeZ;
       }
     } else if (currentBeat === 5) {
       // Breakaway logic: advance state, then set targets
@@ -607,7 +1277,10 @@ export default function SceneV2(props: ISceneV2Props) {
 
       // Randomly trigger a new group breakaway (roughly 1–2 times every few seconds)
       for (let i = 0; i < bCount; i++) {
-        if (!breakaways[i].active && Math.random() < dt * 0.08 / Math.max(bCount, 1)) {
+        if (
+          !breakaways[i].active &&
+          Math.random() < (dt * 0.08) / Math.max(bCount, 1)
+        ) {
           const groupSize = 3 + Math.floor(Math.random() * 6); // 3–8 particles
           for (let j = i; j < Math.min(i + groupSize, bCount); j++) {
             if (!breakaways[j].active) {
@@ -616,7 +1289,8 @@ export default function SceneV2(props: ISceneV2Props) {
               breakaways[j].duration = 2 + Math.random() * 3;
               breakaways[j].orbitAngle = Math.random() * Math.PI * 2;
               breakaways[j].orbitRadius = 0.8 + Math.random() * 0.4;
-              breakaways[j].orbitSpeed = (0.5 + Math.random()) * (Math.random() < 0.5 ? 1 : -1);
+              breakaways[j].orbitSpeed =
+                (0.5 + Math.random()) * (Math.random() < 0.5 ? 1 : -1);
             }
           }
           break; // only one group per frame
@@ -639,9 +1313,12 @@ export default function SceneV2(props: ISceneV2Props) {
         }
       }
     } else {
-      // Beats 2/3: use the same cube targets as primary particles so all particles
-      // contribute to a single coherent shape (no separate halo visible).
-      const shapeT = cubeTargetsRef.current;
+      // Beats 2/3: use spatially-matched cube targets so orbit particles also
+      // stay local during transitions (same sorted targets as primary particles).
+      const shapeT =
+        sortedCubeTargetsRef.current.length > 0
+          ? sortedCubeTargetsRef.current
+          : cubeTargetsRef.current;
       for (let i = primaryCount; i < n; i++) {
         const p = particles[i];
         const o = i * 3;
@@ -655,20 +1332,22 @@ export default function SceneV2(props: ISceneV2Props) {
 
     // ── Beat-specific simulation ──────────────────────────────────────────
 
-    if (currentBeat === 2 || currentBeat === 3) {
-      // ── Beats 2/3: rotating geometric shape + jitter + orbiting particles ──
+    if (currentBeat === 2) {
+      // ── Beat 2: rotating geometric shape + jitter + orbiting particles ───
 
-      shapeRotationRef.current += 0.003 * dt * 60;
-      shapeRotationXRef.current += (0.003 / 20) * dt * 60; // ~0.00015 per frame at 60fps
+      shapeRotationRef.current += 0.001 * dt * 60;
+      shapeRotationXRef.current += (0.001 / 20) * dt * 60;
 
       const cosY = Math.cos(shapeRotationRef.current);
       const sinY = Math.sin(shapeRotationRef.current);
       const cosX = Math.cos(shapeRotationXRef.current);
       const sinX = Math.sin(shapeRotationXRef.current);
 
-      const origTargets = cubeTargetsRef.current;
-
-      // Update primary particle targets: Y-axis rotation + X-axis rotation (slow) + per-particle sinusoidal jitter
+      // Use spatially-matched cube targets so Beat 2→3→4 transitions stay local
+      const origTargets =
+        sortedCubeTargetsRef.current.length > 0
+          ? sortedCubeTargetsRef.current
+          : cubeTargetsRef.current;
       const tOscShape = elapsed * 0.8;
       const shapeJitter = 0.012;
       for (let i = 0; i < primaryCount; i++) {
@@ -677,17 +1356,12 @@ export default function SceneV2(props: ISceneV2Props) {
         const baseY = origTargets[o + 1];
         const baseZ = origTargets[o + 2];
         const phase = i * 0.37;
-
-        // Y rotation
         const rx = cosY * baseX - sinY * baseZ;
         const ry = baseY;
         const rz = sinY * baseX + cosY * baseZ;
-
-        // X rotation (slow)
         const finalX = rx;
         const finalY = cosX * ry - sinX * rz;
         const finalZ = sinX * ry + cosX * rz;
-
         particles[i].targetX =
           finalX + Math.sin(tOscShape + phase) * shapeJitter;
         particles[i].targetY =
@@ -696,16 +1370,13 @@ export default function SceneV2(props: ISceneV2Props) {
           finalZ + Math.sin(tOscShape * 1.1 + phase * 1.3) * shapeJitter;
       }
 
-      // Boid physics on all particles
       stepBoids(
         particles as unknown as IBoidParticle[],
         ORBIT_BOID_PARAMS,
         elapsed,
       );
 
-      // Per-primary lerp — speed depends on beat and active control
-      if (currentBeat === 2 && formTransitionRef.current === "cascade") {
-        // Cascade: stagger arrival so particles settle in waves indexed by position
+      if (formTransitionRef.current === "cascade") {
         if (beat2StartTimeRef.current < 0) beat2StartTimeRef.current = elapsed;
         const beat2Elapsed = elapsed - beat2StartTimeRef.current;
         for (let i = 0; i < primaryCount; i++) {
@@ -722,158 +1393,510 @@ export default function SceneV2(props: ISceneV2Props) {
           p.vz *= 0.45;
         }
       } else {
-        let lerpSpeed: number;
-        if (currentBeat === 2) {
-          lerpSpeed = formTransitionRef.current === "fast" ? 2.5 : 0.5; // fast or drift
-        } else {
-          // Beat 3 (hint)
-          const hs = hintSpeedRef.current;
-          lerpSpeed = hs === "subtle" ? 0.15 : hs === "slow" ? 0.35 : 0.8;
-        }
-        const shapeAlpha =
-          (1 - Math.exp(-lerpSpeed * dt)) * lerpWeightRef.current;
+        // Scale lerp speed so the transition reaches ~99% in beatDuration seconds.
+        // fast mode uses a 5× multiplier to preserve the relative "snap" feel.
+        const baseLerp2 = 4.6 / Math.max(beatDurationRef.current, 1);
+        const lerpSpeed2 =
+          formTransitionRef.current === "fast" ? baseLerp2 * 5 : baseLerp2;
+        const shapeAlpha2 =
+          (1 - Math.exp(-lerpSpeed2 * dt)) * lerpWeightRef.current;
         for (let i = 0; i < primaryCount; i++) {
           const p = particles[i];
-          p.x += (p.targetX - p.x) * shapeAlpha;
-          p.y += (p.targetY - p.y) * shapeAlpha;
-          p.z += (p.targetZ - p.z) * shapeAlpha;
+          p.x += (p.targetX - p.x) * shapeAlpha2;
+          p.y += (p.targetY - p.y) * shapeAlpha2;
+          p.z += (p.targetZ - p.z) * shapeAlpha2;
           p.vx *= 0.45;
           p.vy *= 0.45;
           p.vz *= 0.45;
         }
       }
 
-      // Anti-crossing: soft repulsion from shape center prevents particles from
-      // passing through the interior when approaching from the opposite side.
-      const minR = 0.65;
+      // Center-repulsion: keeps particles from passing through the cube center.
+      const minR2 = 0.5;
       for (let i = 0; i < primaryCount; i++) {
         const p = particles[i];
         const dist = Math.sqrt(p.x * p.x + p.y * p.y + p.z * p.z);
-        if (dist < minR && dist > 0.001) {
-          const force = (minR - dist) * 0.12;
-          p.x += (p.x / dist) * force;
-          p.y += (p.y / dist) * force;
-          p.z += (p.z / dist) * force;
+        if (dist < minR2 && dist > 0.001) {
+          const push = (minR2 - dist) * 0.02;
+          p.vx += (p.x / dist) * push;
+          p.vy += (p.y / dist) * push;
+          p.vz += (p.z / dist) * push;
         }
       }
 
-      // Gentle lerp for orbit particles (boid-dominant)
-      const orbitAlpha23 = (1 - Math.exp(-0.3 * dt)) * 0.05;
+      const orbitAlpha2 = (1 - Math.exp(-0.3 * dt)) * 0.05;
       for (let i = primaryCount; i < n; i++) {
         const p = particles[i];
-        p.x += (p.targetX - p.x) * orbitAlpha23;
-        p.y += (p.targetY - p.y) * orbitAlpha23;
-        p.z += (p.targetZ - p.z) * orbitAlpha23;
+        p.x += (p.targetX - p.x) * orbitAlpha2;
+        p.y += (p.targetY - p.y) * orbitAlpha2;
+        p.z += (p.targetZ - p.z) * orbitAlpha2;
       }
-    } else if (currentBeat === 4) {
-      // ── Beat 4: multi-wave reveal with figure-surface jitter ─────────────
+    } else if (currentBeat === 3) {
+      // ── Beat 3: Hint — organic blob regions tease out of the cube ──────────
+      //
+      // Each cycle picks a 3D anchor point on the figure surface (weighted toward
+      // dramatic areas: head, extremities).  Particles within `hintSpread` world
+      // units of the anchor emerge toward their figure-home positions, with a
+      // smooth radial falloff (smoothstep from centre → edge of blob radius).
+      //
+      // Three hint shapes control which particles are activated:
+      //   blob    — radial proximity in figure-home space (default, organic feel)
+      //   wedge   — proximity in cube-target space (geometric/cube-aligned cap)
+      //   contour — figure-home proximity AND normal faces roughly toward camera
+      //
+      // Cycle timing (3.0 s total, contraction-priority):
+      //   0.0 – 0.8 s : ease-in-out emerge (fast — cube gives way quickly)
+      //   0.8 – 1.1 s : hold at peak (90% of the way to figure surface)
+      //   1.1 – 2.5 s : ease-in-out retract (slow — figure gracefully recedes)
+      //   2.5 – 3.0 s : gap (fully back on cube)
 
-      if (beat4StartTimeRef.current < 0) {
-        beat4StartTimeRef.current = elapsed;
+      if (beat3StartTimeRef.current < 0) beat3StartTimeRef.current = elapsed;
+      const beat3Elapsed = elapsed - beat3StartTimeRef.current;
+      hintPhaseRef.current = beat3Elapsed;
+
+      const totalHintCycles = hintCyclesEffectiveRef.current;
+
+      const cycleIndex = Math.min(
+        Math.floor(beat3Elapsed / CYCLE_DUR),
+        totalHintCycles - 1,
+      );
+      // Clamp cycleLocalT at CYCLE_DUR so last cycle doesn't overflow
+      const cycleLocalT =
+        cycleIndex < totalHintCycles - 1
+          ? beat3Elapsed - cycleIndex * CYCLE_DUR
+          : Math.min(beat3Elapsed - cycleIndex * CYCLE_DUR, CYCLE_DUR);
+
+      // Global emerge fraction for this cycle (drives blob; others offset per particle)
+      const globalEmergeFraction = computeHintEmergeFraction(cycleLocalT);
+
+      // Anchor particle for this cycle
+      const anchorIndices3 = hintAnchorIndicesRef.current;
+      const safeAnchorIdx = Math.max(
+        0,
+        Math.min(
+          anchorIndices3.length > 0
+            ? anchorIndices3[Math.min(cycleIndex, anchorIndices3.length - 1)]
+            : 0,
+          primaryCount - 1,
+        ),
+      );
+      const anchorParticle = particles[safeAnchorIdx];
+      const anchorX3 = anchorParticle.homeX;
+      const anchorY3 = anchorParticle.homeY;
+      const anchorZ3 = anchorParticle.homeZ;
+      const blobRadius3 = hintSpreadRef.current;
+      // Anchor surface normal — used for organic contour in blob mode
+      const anchorNX3 = anchorParticle.normalX;
+      const anchorNY3 = anchorParticle.normalY;
+      const anchorNZ3 = anchorParticle.normalZ;
+      // Organic contour radius is wider than blob radius so the patch can spread
+      // along the surface following the curvature rather than a geometric sphere.
+      const NORMAL_THRESHOLD_3 = 0.35;
+      const contourRadius3 = blobRadius3 * 2.5;
+      const contourRadius3Sq = contourRadius3 * contourRadius3;
+
+      // Debris scatter at peak (globalEmergeFraction > 0.9), once per cycle
+      if (
+        globalEmergeFraction > 0.9 &&
+        cycleIndex !== lastDebrisCycleRef.current
+      ) {
+        lastDebrisCycleRef.current = cycleIndex;
+        applyDebrisScatterAtPoint(
+          particles,
+          primaryCount,
+          anchorX3,
+          anchorY3,
+          anchorZ3,
+          n,
+        );
       }
 
-      const beat4Elapsed = elapsed - beat4StartTimeRef.current;
+      // Cube continues to rotate (same as Beat 2)
+      shapeRotationRef.current += 0.001 * dt * 60;
+      shapeRotationXRef.current += (0.001 / 20) * dt * 60;
+      const cosY3 = Math.cos(shapeRotationRef.current);
+      const sinY3 = Math.sin(shapeRotationRef.current);
+      const cosX3 = Math.cos(shapeRotationXRef.current);
+      const sinX3 = Math.sin(shapeRotationXRef.current);
 
-      const rp = revealPacingRef.current;
-      const REVEAL_DURATION =
-        rp === "dramatic" ? 30.0 : rp === "burst" ? 15.0 : 20.0;
-      const wave1Threshold =
-        rp === "dramatic" ? 0.2 : rp === "burst" ? 0.4 : 0.35;
-      const retractThreshold =
-        rp === "dramatic" ? 0.5 : rp === "burst" ? 0.5 : 0.55;
+      const sortedTargets3 =
+        sortedCubeTargetsRef.current.length > 0
+          ? sortedCubeTargetsRef.current
+          : cubeTargetsRef.current;
+      const tOscShape3 = elapsed * 0.8;
+      const shapeJitter3 = 0.012;
 
-      const tPhase = Math.min(beat4Elapsed / REVEAL_DURATION, 1.0);
+      const hintSty = hintStyleRef.current;
+      const hintShp = hintShapeRef.current;
 
-      const wave1Set = wave1SetRef.current;
+      // Camera world-forward direction (reuse module-level scratch Vector3)
+      state.camera.getWorldDirection(_scratchCamDir);
+      // Negate so camDirX/Y/Z points FROM scene TOWARD camera (for normal facing test)
+      const camDirX3 = -_scratchCamDir.x;
+      const camDirY3 = -_scratchCamDir.y;
+      const camDirZ3 = -_scratchCamDir.z;
+      // Also keep view-toward-origin for contour shape test (same values, opposite sign)
+      const viewDirX3 = _scratchCamDir.x;
+      const viewDirY3 = _scratchCamDir.y;
+      const viewDirZ3 = _scratchCamDir.z;
 
-      const shapeTargets = cubeTargetsRef.current;
+      // Anchor cube-space position (for wedge shape)
+      const anchorCubeX3 = sortedTargets3[safeAnchorIdx * 3];
+      const anchorCubeY3 = sortedTargets3[safeAnchorIdx * 3 + 1];
+      const anchorCubeZ3 = sortedTargets3[safeAnchorIdx * 3 + 2];
 
-      const figJitter = 0.006;
-      const tOscFig = elapsed * 0.5;
-
-      // Set targets per sub-phase for PRIMARY particles only
-      for (let i = 0; i < primaryCount; i++) {
-        const p = particles[i];
-        const o = i * 3;
-        const phase = i * 0.37;
-
-        if (tPhase >= retractThreshold) {
-          // Sub-phase 3 (final reveal): all primary → home with jitter
-          p.targetX = p.homeX + Math.sin(tOscFig + phase) * figJitter;
-          p.targetY = p.homeY + Math.cos(tOscFig * 0.7 + phase) * figJitter;
-          p.targetZ =
-            p.homeZ + Math.sin(tOscFig * 1.1 + phase * 1.3) * figJitter;
-        } else if (tPhase >= wave1Threshold) {
-          // Sub-phase 2 (retract): wave1 → 50% back toward shape; others → shape
-          if (wave1Set.has(i)) {
-            p.targetX = 0.5 * p.homeX + 0.5 * shapeTargets[o];
-            p.targetY = 0.5 * p.homeY + 0.5 * shapeTargets[o + 1];
-            p.targetZ = 0.5 * p.homeZ + 0.5 * shapeTargets[o + 2];
+      // Y-extents of blob particles for sweep style
+      let blobMinY3 = Infinity,
+        blobMaxY3 = -Infinity;
+      if (hintSty !== "bulge") {
+        for (let i = 0; i < primaryCount; i++) {
+          const p = particles[i];
+          const dx = p.homeX - anchorX3;
+          const dy = p.homeY - anchorY3;
+          const dz = p.homeZ - anchorZ3;
+          const dist2YExt = dx * dx + dy * dy + dz * dz;
+          let inYExt: boolean;
+          if (hintShp === "blob") {
+            // Organic contour: use normal alignment + extended radius
+            const aDotY =
+              p.normalX * anchorNX3 +
+              p.normalY * anchorNY3 +
+              p.normalZ * anchorNZ3;
+            inYExt =
+              dist2YExt < contourRadius3Sq && aDotY >= NORMAL_THRESHOLD_3;
           } else {
-            p.targetX = shapeTargets[o];
-            p.targetY = shapeTargets[o + 1];
-            p.targetZ = shapeTargets[o + 2];
+            inYExt = dist2YExt < blobRadius3 * blobRadius3;
           }
-        } else {
-          // Sub-phase 1 (wave1): wave1 → home with jitter; others → shape
-          if (wave1Set.has(i)) {
-            p.targetX = p.homeX + Math.sin(tOscFig + phase) * figJitter;
-            p.targetY = p.homeY + Math.cos(tOscFig * 0.7 + phase) * figJitter;
-            p.targetZ =
-              p.homeZ + Math.sin(tOscFig * 1.1 + phase * 1.3) * figJitter;
-          } else {
-            p.targetX = shapeTargets[o];
-            p.targetY = shapeTargets[o + 1];
-            p.targetZ = shapeTargets[o + 2];
+          if (inYExt) {
+            if (p.homeY < blobMinY3) blobMinY3 = p.homeY;
+            if (p.homeY > blobMaxY3) blobMaxY3 = p.homeY;
           }
         }
+        if (blobMinY3 === Infinity) {
+          blobMinY3 = anchorY3;
+          blobMaxY3 = anchorY3;
+        }
+      }
+      const blobYRange3 = Math.max(blobMaxY3 - blobMinY3, 0.001);
+
+      for (let i = 0; i < primaryCount; i++) {
+        const o = i * 3;
+        const baseX = sortedTargets3[o];
+        const baseY = sortedTargets3[o + 1];
+        const baseZ = sortedTargets3[o + 2];
+        const phase = i * 0.37;
+
+        // Rotate cube target (cube keeps spinning during hint)
+        const rx3 = cosY3 * baseX - sinY3 * baseZ;
+        const ry3 = baseY;
+        const rz3 = sinY3 * baseX + cosY3 * baseZ;
+        const cubeX = rx3 + Math.sin(tOscShape3 + phase) * shapeJitter3;
+        const cubeY =
+          cosX3 * ry3 -
+          sinX3 * rz3 +
+          Math.cos(tOscShape3 * 0.7 + phase) * shapeJitter3;
+        const cubeZ =
+          sinX3 * ry3 +
+          cosX3 * rz3 +
+          Math.sin(tOscShape3 * 1.1 + phase * 1.3) * shapeJitter3;
+
+        const p = particles[i];
+        let pEF = 0; // per-particle emerge fraction
+
+        // Distance from anchor in figure-home space (used for blob/contour and falloff)
+        const hdx = p.homeX - anchorX3;
+        const hdy = p.homeY - anchorY3;
+        const hdz = p.homeZ - anchorZ3;
+        const distToAnchor3 = Math.sqrt(hdx * hdx + hdy * hdy + hdz * hdz);
+
+        // Determine if this particle is within the active blob
+        let inBlob3 = false;
+        if (hintShp === "blob") {
+          // Organic contour: activate particles whose normals align with the anchor's
+          // normal AND are within the extended contour radius. This makes the hint
+          // follow the surface curvature — like skin pushing through from inside —
+          // rather than a pure distance sphere or vertical column.
+          const aDot3 =
+            p.normalX * anchorNX3 +
+            p.normalY * anchorNY3 +
+            p.normalZ * anchorNZ3;
+          inBlob3 =
+            distToAnchor3 <= contourRadius3 && aDot3 >= NORMAL_THRESHOLD_3;
+        } else if (hintShp === "wedge") {
+          // Proximity check in cube-target space — geometric/cube-aligned cap
+          const cdx = baseX - anchorCubeX3;
+          const cdy = baseY - anchorCubeY3;
+          const cdz = baseZ - anchorCubeZ3;
+          inBlob3 =
+            cdx * cdx + cdy * cdy + cdz * cdz < blobRadius3 * blobRadius3;
+        } else {
+          // contour: figure-home proximity AND surface normal faces camera
+          if (distToAnchor3 < blobRadius3) {
+            const normalDot =
+              p.normalX * viewDirX3 +
+              p.normalY * viewDirY3 +
+              p.normalZ * viewDirZ3;
+            inBlob3 = normalDot > 0.3;
+          }
+        }
+
+        if (inBlob3) {
+          // Smooth falloff: blob uses normal-alignment contour falloff; others use hard edge.
+          let smoothProximity: number;
+          if (hintShp === "blob") {
+            // Particles whose normals point most directly toward the anchor's normal
+            // emerge fully; those just above the threshold emerge barely.
+            const aDotSmooth =
+              p.normalX * anchorNX3 +
+              p.normalY * anchorNY3 +
+              p.normalZ * anchorNZ3;
+            const rawContour =
+              (aDotSmooth - NORMAL_THRESHOLD_3) / (1 - NORMAL_THRESHOLD_3);
+            smoothProximity = Math.max(0, Math.min(1, rawContour));
+          } else {
+            smoothProximity = 1.0;
+          }
+
+          // Depth shading: back-facing particles emerge slightly less for 3D form
+          const normalDot3 =
+            p.normalX * camDirX3 + p.normalY * camDirY3 + p.normalZ * camDirZ3;
+          const depthFactor = normalDot3 > 0 ? 1.0 : 0.7;
+
+          let globalEF: number;
+          if (hintSty === "bulge") {
+            globalEF = globalEmergeFraction;
+          } else if (hintSty === "pulse") {
+            // Radial ripple from anchor: centre leads, edge lags by up to 0.5 s
+            const normalizedDist3 = Math.min(distToAnchor3 / blobRadius3, 1.0);
+            const phaseShift3 = normalizedDist3 * 0.5;
+            globalEF = computeHintEmergeFraction(
+              Math.max(0, cycleLocalT - phaseShift3),
+            );
+          } else {
+            // sweep: top of blob emerges first, sweeps downward
+            const tInBlob = (p.homeY - blobMinY3) / blobYRange3;
+            const phaseShift3 = (1 - tInBlob) * 0.5;
+            globalEF = computeHintEmergeFraction(
+              Math.max(0, cycleLocalT - phaseShift3),
+            );
+          }
+          pEF = globalEF * smoothProximity * depthFactor;
+        }
+
+        // Cap emergence at 90% so the cube surface is never fully absent
+        const dynamicTargetX = cubeX + (p.homeX - cubeX) * pEF;
+        const dynamicTargetY = cubeY + (p.homeY - cubeY) * pEF;
+        const dynamicTargetZ = cubeZ + (p.homeZ - cubeZ) * pEF;
+        p.targetX = dynamicTargetX;
+        p.targetY = dynamicTargetY;
+        p.targetZ = dynamicTargetZ;
       }
 
-      // Run boid physics on all particles
       stepBoids(
         particles as unknown as IBoidParticle[],
         ORBIT_BOID_PARAMS,
         elapsed,
       );
 
-      // Lerp speed varies by sub-phase and revealPacing mode
-      let lerpSpeed4: number;
-      if (rp === "burst") {
-        lerpSpeed4 =
-          tPhase < wave1Threshold ? 3.5 : tPhase < retractThreshold ? 1.2 : 2.5;
-      } else {
-        // "current" / "dramatic": sub-phase 1 uses a gentle 1.0 speed (was 2.0) so
-        // particles arc around the figure rather than cutting straight through its centre.
-        lerpSpeed4 =
-          tPhase < wave1Threshold ? 1.0 : tPhase < retractThreshold ? 0.6 : 1.5;
-      }
-      const alpha4 = 1 - Math.exp(-lerpSpeed4 * dt);
-
+      // Spring force toward dynamic target — crisp response with no lerp lag.
+      // Warmup ramps from a gentle 0.008 to the full 0.04 over 1 s so the
+      // transition from Beat 2's direct-lerp system doesn't suddenly excite
+      // the spring and cause oscillation/jitter at beat entry.
+      const warmupDuration3 = 1.0;
+      const springK3Base = 0.04;
+      const springK3 =
+        beat3Elapsed < warmupDuration3
+          ? 0.008 + (springK3Base - 0.008) * (beat3Elapsed / warmupDuration3)
+          : springK3Base;
+      const damping3 = 0.7;
       for (let i = 0; i < primaryCount; i++) {
         const p = particles[i];
-        p.x += (p.targetX - p.x) * alpha4;
-        p.y += (p.targetY - p.y) * alpha4;
-        p.z += (p.targetZ - p.z) * alpha4;
-        p.vx *= 0.45;
-        p.vy *= 0.45;
-        p.vz *= 0.45;
+        p.vx += (p.targetX - p.x) * springK3;
+        p.vy += (p.targetY - p.y) * springK3;
+        p.vz += (p.targetZ - p.z) * springK3;
+        p.x += p.vx;
+        p.y += p.vy;
+        p.z += p.vz;
+        p.vx *= damping3;
+        p.vy *= damping3;
+        p.vz *= damping3;
       }
 
-      // Anti-crossing: stronger repulsion (was 0.35) prevents particles from
-      // lerping straight through the figure's centre when arriving from opposite sides.
-      const minR4 = 0.55;
+      const orbitAlpha3 = (1 - Math.exp(-0.3 * dt)) * 0.05;
+      for (let i = primaryCount; i < n; i++) {
+        const p = particles[i];
+        p.x += (p.targetX - p.x) * orbitAlpha3;
+        p.y += (p.targetY - p.y) * orbitAlpha3;
+        p.z += (p.targetZ - p.z) * orbitAlpha3;
+      }
+    } else if (currentBeat === 4) {
+      // ── Beat 4: Ripple wave reveal — cube permanently deforms into figure ─
+      //
+      // The same wave mechanism as Beat 3 but monotonically advancing:
+      // the wave radiates from the figure's top and particles permanently
+      // solidify at their home positions as the wave passes them.
+      // Particles behind the wave front stay at homeX/Y/Z (solidified).
+      // Particles ahead of the wave remain at their spatially-matched cube target.
+      // revealStages maps wave progress to debris scatter trigger points.
+
+      if (beat4StartTimeRef.current < 0) beat4StartTimeRef.current = elapsed;
+
+      // Advance wave radius so it covers waveMaxDist in exactly beatDuration seconds.
+      const waveRate =
+        waveMaxDistRef.current / Math.max(beatDurationRef.current, 1);
+      waveRadiusBeat4Ref.current += waveRate * dt;
+      const waveRadius4 = waveRadiusBeat4Ref.current;
+      const waveMaxDist4 = waveMaxDistRef.current;
+      const waveWidth4 = Math.max(0.2, waveMaxDist4 * 0.2);
+
+      const waveOX4 = waveOriginRef.current.x;
+      const waveOY4 = waveOriginRef.current.y;
+      const waveOZ4 = waveOriginRef.current.z;
+
+      const sortedTargets4 =
+        sortedCubeTargetsRef.current.length > 0
+          ? sortedCubeTargetsRef.current
+          : cubeTargetsRef.current;
+
+      const numStages4 = revealStagesRef.current;
+      // Map wave progress (0→1 at maxDist) to stage index for debris scatter
+      const waveProgress4 = waveRadius4 / Math.max(waveMaxDist4, 0.001);
+      const currentStage4 = Math.min(
+        Math.floor(waveProgress4 * numStages4),
+        numStages4 - 1,
+      );
+      revealStageRef.current = currentStage4;
+
+      if (currentStage4 !== lastRevealStageRef.current) {
+        lastRevealStageRef.current = currentStage4;
+        applyDebrisScatter(
+          particles,
+          primaryCount,
+          regionIndexRef.current,
+          currentStage4,
+          n,
+        );
+      }
+
+      const beat4Elapsed = elapsed - beat4StartTimeRef.current;
+      const warmupDuration4 = 2.0;
+
+      // How much to blend toward entry positions (1.0 at start → 0.0 at warmupDuration4).
+      // Ensures particles flow from wherever they were in Beat 3 rather than jumping.
+      const posBlend4 =
+        beat4Elapsed < warmupDuration4 ? 1 - beat4Elapsed / warmupDuration4 : 0;
+      const entryPos4 = beat4EntryPosRef.current;
+
+      // Smoothstep-decelerate the cube rotation from the Beat 3 entry angle to 0
+      // over the first 2.0 s so there is no sudden orientation snap at the transition.
+      let rotY4 = 0;
+      let rotX4 = 0;
+      if (beat4Elapsed < warmupDuration4) {
+        const tSmooth = beat4Elapsed / warmupDuration4;
+        const smooth = tSmooth * tSmooth * (3 - 2 * tSmooth); // smoothstep
+        rotY4 = beat4EntryRotYRef.current * (1 - smooth);
+        rotX4 = beat4EntryRotXRef.current * (1 - smooth);
+      }
+      const cosY4 = isFinite(rotY4) ? Math.cos(rotY4) : 1;
+      const sinY4 = isFinite(rotY4) ? Math.sin(rotY4) : 0;
+      const cosX4 = isFinite(rotX4) ? Math.cos(rotX4) : 1;
+      const sinX4 = isFinite(rotX4) ? Math.sin(rotX4) : 0;
+
+      const figJitter4 = 0.006;
+      const tOscFig4 = elapsed * 0.5;
+
+      for (let i = 0; i < primaryCount; i++) {
+        const o = i * 3;
+        const p = particles[i];
+        const phase = i * 0.37;
+
+        const ddx4 = p.homeX - waveOX4;
+        const ddy4 = p.homeY - waveOY4;
+        const ddz4 = p.homeZ - waveOZ4;
+        const distFromOrigin4 = Math.sqrt(
+          ddx4 * ddx4 + ddy4 * ddy4 + ddz4 * ddz4,
+        );
+
+        if (distFromOrigin4 < waveRadius4 - waveWidth4) {
+          // Solidified: permanently at figure surface with gentle jitter
+          p.targetX = p.homeX + Math.sin(tOscFig4 + phase) * figJitter4;
+          p.targetY = p.homeY + Math.cos(tOscFig4 * 0.7 + phase) * figJitter4;
+          p.targetZ =
+            p.homeZ + Math.sin(tOscFig4 * 1.1 + phase * 1.3) * figJitter4;
+        } else {
+          // Wave front or not yet reached: lerp between (rotated) cube target and home.
+          // Apply Y-axis then X-axis rotation matching Beat 3's formula exactly,
+          // with the angle smoothly decelerating from the Beat 3 entry angle to 0
+          // over warmupDuration4 so there is no sudden orientation snap.
+          const baseX4 = sortedTargets4[o];
+          const baseY4 = sortedTargets4[o + 1];
+          const baseZ4 = sortedTargets4[o + 2];
+          const rx4 = cosY4 * baseX4 - sinY4 * baseZ4;
+          const ry4 = baseY4;
+          const rz4 = sinY4 * baseX4 + cosY4 * baseZ4;
+          const cubeX4 = rx4;
+          const cubeY4 = cosX4 * ry4 - sinX4 * rz4;
+          const cubeZ4 = sinX4 * ry4 + cosX4 * rz4;
+
+          const waveEdge4 = waveRadius4 - distFromOrigin4;
+          const rawFrac4 = Math.max(0, Math.min(1, waveEdge4 / waveWidth4));
+          const t4 = rawFrac4 * rawFrac4 * (3 - 2 * rawFrac4); // smoothstep
+          p.targetX = cubeX4 * (1 - t4) + p.homeX * t4;
+          p.targetY = cubeY4 * (1 - t4) + p.homeY * t4;
+          p.targetZ = cubeZ4 * (1 - t4) + p.homeZ * t4;
+        }
+
+        // Blend targets toward entry positions during warmup so particles start
+        // exactly where they were in Beat 3 and flow smoothly — no collapse.
+        if (posBlend4 > 0 && entryPos4.length >= primaryCount * 3) {
+          const eo = i * 3;
+          p.targetX = p.targetX * (1 - posBlend4) + entryPos4[eo] * posBlend4;
+          p.targetY =
+            p.targetY * (1 - posBlend4) + entryPos4[eo + 1] * posBlend4;
+          p.targetZ =
+            p.targetZ * (1 - posBlend4) + entryPos4[eo + 2] * posBlend4;
+        }
+      }
+
+      stepBoids(
+        particles as unknown as IBoidParticle[],
+        ORBIT_BOID_PARAMS,
+        elapsed,
+      );
+
+      // Warmup spring — starts gentle (0.015) and ramps to full (0.08)
+      // over the first 1.5 s to prevent the jarring inward rush at beat entry.
+      const springK4 =
+        beat4Elapsed < warmupDuration4
+          ? 0.008 + (0.08 - 0.008) * (beat4Elapsed / warmupDuration4)
+          : 0.08;
+      const damping4 = 0.45;
+      for (let i = 0; i < primaryCount; i++) {
+        const p = particles[i];
+        p.vx += (p.targetX - p.x) * springK4;
+        p.vy += (p.targetY - p.y) * springK4;
+        p.vz += (p.targetZ - p.z) * springK4;
+        p.x += p.vx;
+        p.y += p.vy;
+        p.z += p.vz;
+        p.vx *= damping4;
+        p.vy *= damping4;
+        p.vz *= damping4;
+      }
+
+      // Gentle center-repulsion: prevents particles from cutting through the figure center
+      const minR4 = 0.5;
       for (let i = 0; i < primaryCount; i++) {
         const p = particles[i];
         const dist = Math.sqrt(p.x * p.x + p.y * p.y + p.z * p.z);
         if (dist < minR4 && dist > 0.001) {
-          const force = (minR4 - dist) * 0.12;
-          p.x += (p.x / dist) * force;
-          p.y += (p.y / dist) * force;
-          p.z += (p.z / dist) * force;
+          const push = (minR4 - dist) * 0.02;
+          p.vx += (p.x / dist) * push;
+          p.vy += (p.y / dist) * push;
+          p.vz += (p.z / dist) * push;
         }
       }
 
-      // Gentle lerp for orbit particles (boid-dominant)
       const orbitAlpha4 = (1 - Math.exp(-0.3 * dt)) * 0.05;
       for (let i = primaryCount; i < n; i++) {
         const p = particles[i];
@@ -969,8 +1992,17 @@ export default function SceneV2(props: ISceneV2Props) {
           }
         }
 
-        const alpha5 =
-          (1 - Math.exp(-getLerpSpeedForBeat(5) * dt)) * lerpWeightRef.current;
+        // Warmup lerp speed: ramp from 0.3 → full 1.2 over 1.5 s so particles
+        // that were still at cube positions in Beat 4 don't rush too abruptly.
+        if (beat5StartTimeRef.current < 0) beat5StartTimeRef.current = elapsed;
+        const beat5Elapsed = elapsed - beat5StartTimeRef.current;
+        const warmupDuration5 = 1.5;
+        const lerpSpeed5Base = getLerpSpeedForBeat(5);
+        const lerpSpeed5 =
+          beat5Elapsed < warmupDuration5
+            ? 0.3 + (lerpSpeed5Base - 0.3) * (beat5Elapsed / warmupDuration5)
+            : lerpSpeed5Base;
+        const alpha5 = (1 - Math.exp(-lerpSpeed5 * dt)) * lerpWeightRef.current;
         for (let i = 0; i < primaryCount; i++) {
           const p = particles[i];
           p.x += (p.targetX - p.x) * alpha5;
@@ -1014,8 +2046,9 @@ export default function SceneV2(props: ISceneV2Props) {
           }
         }
       } else if (currentBeat === 1) {
-        // Beat 1: lerp primary particles toward the halfway point (50% ring, 50% shape)
-        const lerpSpeed1 = getLerpSpeedForBeat(1);
+        // Beat 1: lerp primary particles toward the halfway point (50% ring, 50% shape).
+        // Scale speed so the lerp reaches ~99% in beatDuration seconds.
+        const lerpSpeed1 = 4.6 / Math.max(beatDurationRef.current, 1);
         const alpha1 = (1 - Math.exp(-lerpSpeed1 * dt)) * lerpWeightRef.current;
         for (let i = 0; i < primaryCount; i++) {
           const p = particles[i];
@@ -1091,8 +2124,7 @@ export default function SceneV2(props: ISceneV2Props) {
         for (let i = primaryCount; i < n; i++) {
           const p = particles[i];
           const bi = i - primaryCount;
-          const isActive =
-            bi < breakaways.length && breakaways[bi].active;
+          const isActive = bi < breakaways.length && breakaways[bi].active;
           const alpha = isActive ? orbitAlphaElse : alpha5Orbit;
           p.x += (p.targetX - p.x) * alpha;
           p.y += (p.targetY - p.y) * alpha;
@@ -1127,14 +2159,25 @@ export default function SceneV2(props: ISceneV2Props) {
 
     // ── Debug mesh rotation (figure mesh only — particles stay unrotated) ────
 
-    if (debugMeshRotationRef.current && figureGroupRef.current) {
-      const { x, y, z } = debugMeshRotationRef.current;
-      figureGroupRef.current.rotation.set(x, y, z);
-    } else if (!debugMeshRotationRef.current && figureGroupRef.current) {
-      figureGroupRef.current.rotation.set(0, 0, 0);
+    if (figureGroupRef.current) {
+      const rot = debugMeshRotationRef.current ?? {
+        x: -1.59,
+        y: 0.01,
+        z: -0.19,
+      };
+      figureGroupRef.current.rotation.set(rot.x, rot.y, rot.z);
+      figureGroupRef.current.scale.setScalar(figureScaleRef.current ?? 1.0);
+      // Shift the skin mesh group by the negative centroid so it aligns with
+      // the centroid-adjusted swarm particle cloud (homeX/Y/Z are centered at
+      // origin; raw mesh positions are not).
+      const off = figureOffsetRef.current;
+      figureGroupRef.current.position.set(off.x, off.y, off.z);
     }
 
     // ── Compute centroid for proximity shader ─────────────────────────────
+    // Mutate the existing object in place so SkinParticleSystem.useFrame —
+    // which closed over the same object reference at render time — always reads
+    // the current frame's centroid without waiting for the next React re-render.
 
     let cx = 0,
       cy = 0,
@@ -1144,8 +2187,9 @@ export default function SceneV2(props: ISceneV2Props) {
       cy += particles[i].y;
       cz += particles[i].z;
     }
-    centroidRef.current = { x: cx / n, y: cy / n, z: cz / n };
-    skinCentroidRef.current = centroidRef.current;
+    skinCentroidRef.current.x = cx / n;
+    skinCentroidRef.current.y = cy / n;
+    skinCentroidRef.current.z = cz / n;
 
     // ── Beat progress callback ────────────────────────────────────────────
 
@@ -1158,7 +2202,7 @@ export default function SceneV2(props: ISceneV2Props) {
         beatProgressStartTimeRef.current = elapsed;
         prevBeatForProgressRef.current = currentBeat;
       }
-      const durationSec = beatDurationMsRef.current / 1000;
+      const durationSec = beatDurationRef.current;
       const progress = Math.min(
         (elapsed - beatProgressStartTimeRef.current) / durationSec,
         1,
@@ -1176,9 +2220,19 @@ export default function SceneV2(props: ISceneV2Props) {
     return 0.3; // approved
   }, [beat]);
 
-  const opacityMultiplierForBeat = useMemo(() => {
-    return beat === 2 || beat === 3 ? 0.6 : 1.0;
-  }, [beat]);
+  // Opacity is controlled solely by the user's `opacity` prop, `depthOpacityMode`,
+  // and `depthSizing` — no per-beat hard-coded overrides.
+
+  const depthOpacityStrength = useMemo(() => {
+    switch (depthOpacityMode) {
+      case "subtle":
+        return 0.45;
+      case "strong":
+        return 0.82;
+      default:
+        return 0;
+    }
+  }, [depthOpacityMode]);
 
   // Use state-driven values for render gating so React re-renders after model load
   const particles = particlesRef.current;
@@ -1188,6 +2242,7 @@ export default function SceneV2(props: ISceneV2Props) {
       <color attach="background" args={["#0a0a0f"]} />
 
       <OrbitControls
+        ref={orbitControlsRef}
         enabled={orbitEnabled}
         enablePan={false}
         enableZoom={true}
@@ -1208,7 +2263,7 @@ export default function SceneV2(props: ISceneV2Props) {
             geometry={skinGeometry}
             isDarkMode
             normalShading={0}
-            particleCount={Math.min(80_000, PARTICLE_CAPACITY)}
+            particleCount={Math.min(skinParticleCount, PARTICLE_CAPACITY)}
             particleSize={particleSize * 2.5}
             proximityMode={proximityMode}
             proximityRadius={0.5}
@@ -1228,7 +2283,7 @@ export default function SceneV2(props: ISceneV2Props) {
             particleSize={particleSize}
             color={color}
             opacity={opacity}
-            opacityMultiplier={opacityMultiplierForBeat}
+            depthOpacityStrength={depthOpacityStrength}
           />
         )}
       </group>

@@ -161,7 +161,7 @@ export default function SkinParticleSystem(props: ISkinParticleSystemProps) {
     uniforms.skinNormalShading.value = normalShading;
     uniforms.skinDepthFade.value = depthFade;
     uniforms.skinContourDensity.value = contourDensity;
-    uniforms.particleWorldRadius.value = particleSize * 0.7;
+    uniforms.particleWorldRadius.value = particleSize * 3.0;
     uniforms.lightWorldDir.value.copy(LIGHT_WORLD_DIR);
 
     const highlightActive = sweepHighlightY !== null;
