@@ -1399,17 +1399,17 @@ export default function SceneV2(props: ISceneV2Props) {
       // Smooth damped lerp toward rotated cube target — uses p.targetX/Y/Z which
       // already have the rotation matrix applied (computed in the loop above).
       // Ramp from Beat 1's approximate effective alpha (~0.009/frame at default
-      // beatDuration=8) up to Beat 2's steady-state rate over 3 s so there is no
+      // beatDuration=8) up to Beat 2's steady-state rate over 5 s so there is no
       // sudden speed burst when transitioning from Swirl In to Form.
       const LERP_RATE_BEAT1_APPROX = 0.0063;
       const LERP_RATE_BEAT2_TARGET = 0.0175;
-      const beat2Warmup = Math.min(1, beat2Elapsed / 3.0);
+      const beat2Warmup = Math.min(1, beat2Elapsed / 5.0);
       const lerpRate2 = lerp(
         LERP_RATE_BEAT1_APPROX,
         LERP_RATE_BEAT2_TARGET,
         beat2Warmup * beat2Warmup,
       );
-      // Ramp velocity damping from Beat 1's 0.45 to Beat 2's 0.85 over 3 s.
+      // Ramp velocity damping from Beat 1's 0.45 to Beat 2's 0.85 over 5 s.
       // Without this ramp the sudden jump in damping coefficient creates a subtle
       // change in momentum character on frame 1, contributing to the perceived
       // acceleration at Form entry.
@@ -1920,9 +1920,9 @@ export default function SceneV2(props: ISceneV2Props) {
           p.vz *= 0.45;
         }
 
-        // In the second half of Beat 1, gently pull particles toward their pre-assigned
+        // In the last 70% of Beat 1, gently pull particles toward their pre-assigned
         // cube targets so they're already 30–40% of the way there when Beat 2 starts.
-        // The pull starts at 0 and ease-in increases to cubeLerpRate=0.008 at beat end.
+        // The pull starts at 0 and ease-in increases to cubeLerpRate=0.012 at beat end.
         //
         // IMPORTANT: apply the same Y+X rotation that Beat 2 uses so the direction of
         // pull is already aligned with Beat 2's rotated targets. Without this, Beat 1
@@ -1930,12 +1930,12 @@ export default function SceneV2(props: ISceneV2Props) {
         // targets the rotated face (e.g. +X rotated 62° over 8 s) — the sudden
         // direction change is the primary cause of the visible acceleration at Beat 2 entry.
         if (
-          beat1Progress > 0.5 &&
+          beat1Progress > 0.3 &&
           sortedCubeTargetsRef.current.length >= primaryCount * 3
         ) {
-          const pullT = (beat1Progress - 0.5) / 0.5; // 0→1 over second half
+          const pullT = (beat1Progress - 0.3) / 0.7; // 0→1 over last 70% of beat
           const pullSmooth = pullT * pullT; // ease in
-          const cubeLerpRate = pullSmooth * 0.008;
+          const cubeLerpRate = pullSmooth * 0.012;
 
           // Precompute rotation matrices once outside the per-particle loop
           const cosYPull = Math.cos(shapeRotationRef.current);
