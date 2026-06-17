@@ -395,8 +395,8 @@ export default function AppV2() {
   // ── Figure orientation state ──────────────────────────────────────────────
   const [debugSectionOpen, setDebugSectionOpen] = useState(false);
   const [debugRotX, setDebugRotX] = useState(-1.59);
-  const [debugRotY, setDebugRotY] = useState(1.57);
-  const [debugRotZ, setDebugRotZ] = useState(-0.19);
+  const [debugRotY, setDebugRotY] = useState(0.01);
+  const [debugRotZ, setDebugRotZ] = useState(0.01);
   const [figureScale, setFigureScale] = useState(2.0);
   const [figurePosX, setFigurePosX] = useState(-0.1);
   const [figurePosY, setFigurePosY] = useState(0.4);
