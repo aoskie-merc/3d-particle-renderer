@@ -1887,15 +1887,7 @@ export default function SceneV2(props: ISceneV2Props) {
       if (currentBeat === 5) {
         // Beat 5: lerp primary toward home with per-mode surface motion
         const motion = surfaceMotionRef.current;
-        // During drag, bypass all ambient surface motion so the figure is
-        // completely rigid. Ambient effects (shimmer / breathe / flow) apply
-        // per-particle radial offsets that differ across particles; when the
-        // figure spins quickly those offsets read as squishing / narrowing.
-        // Zeroing them while isDraggingApprovedRef is true keeps every particle
-        // at exactly its quaternion-rotated home position — no deformation lag.
-        const isRigidFrame = isDraggingApprovedRef.current;
-
-        if (motion === "shimmer" && !isRigidFrame) {
+        if (motion === "shimmer") {
           // Decay all per-particle shimmer offsets (half-life ~0.23 s at decay rate 3)
           const shimmerOffs = shimmerOffsetRef.current;
           const shimmerDecay = Math.exp(-3 * dt);
@@ -1932,7 +1924,7 @@ export default function SceneV2(props: ISceneV2Props) {
               p.targetZ = rhZ + beat5PivotZ;
             }
           }
-        } else if (motion === "breathe" && !isRigidFrame) {
+        } else if (motion === "breathe") {
           // All surface particles pulse outward and back together (sinusoidal, synchronized)
           const breatheOffset = Math.sin(elapsed * 0.8) * 0.04;
           for (let i = 0; i < primaryCount; i++) {
@@ -1958,7 +1950,7 @@ export default function SceneV2(props: ISceneV2Props) {
               p.targetZ = rhZ + beat5PivotZ;
             }
           }
-        } else if (motion === "flow" && !isRigidFrame) {
+        } else if (motion === "flow") {
           // Each particle has its own independent per-particle noise phase offset
           for (let i = 0; i < primaryCount; i++) {
             const p = particles[i];
@@ -1985,9 +1977,7 @@ export default function SceneV2(props: ISceneV2Props) {
             }
           }
         } else {
-          // still mode, OR any mode during drag (isRigidFrame=true): particles
-          // rest exactly on the quaternion-rotated surface with zero ambient
-          // offset so the figure stays perfectly rigid while the user drags.
+          // still mode: particles rest exactly on the quaternion-rotated surface.
           for (let i = 0; i < primaryCount; i++) {
             const p = particles[i];
             _beat5Vec.set(
@@ -2179,26 +2169,15 @@ export default function SceneV2(props: ISceneV2Props) {
       // slower gentle alpha for smooth orbital motion.
       const orbitAlphaElse = (1 - Math.exp(-0.3 * dt)) * 0.05;
       if (currentBeat === 5) {
-        const breakaways = breakawayRef.current;
-        const isDraggingOrbit = isDraggingApprovedRef.current;
+        // Beat 5 orbit particles: ALL snap directly, no lerp, fully rigid
         for (let i = primaryCount; i < n; i++) {
           const p = particles[i];
-          const bi = i - primaryCount;
-          const isActive = bi < breakaways.length && breakaways[bi].active;
-          if (isActive && !isDraggingOrbit) {
-            // Actively orbiting (non-drag only): smooth lerp for graceful orbital arc
-            p.x += (p.targetX - p.x) * orbitAlphaElse;
-            p.y += (p.targetY - p.y) * orbitAlphaElse;
-            p.z += (p.targetZ - p.z) * orbitAlphaElse;
-          } else {
-            // Surface-sitting, OR dragging: snap directly to rotated surface target
-            p.x = p.targetX;
-            p.y = p.targetY;
-            p.z = p.targetZ;
-            p.vx = 0;
-            p.vy = 0;
-            p.vz = 0;
-          }
+          p.x = p.targetX;
+          p.y = p.targetY;
+          p.z = p.targetZ;
+          p.vx = 0;
+          p.vy = 0;
+          p.vz = 0;
         }
       } else {
         for (let i = primaryCount; i < n; i++) {
