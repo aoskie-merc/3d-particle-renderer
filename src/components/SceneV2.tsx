@@ -984,7 +984,7 @@ export default function SceneV2(props: ISceneV2Props) {
     // Reset cascade timer when entering beat 2
     if (beat === 2) {
       beat2StartTimeRef.current = -1; // initialized on first useFrame tick
-      beat2WarmupRef.current = 0; // boid forces ramp in over 3 s to prevent gnats burst
+      beat2WarmupRef.current = 0; // swirl forces and lerp ramp in over 5 s for graceful motion
     }
 
     // Reset Beat 3 morphing clay state and pre-compute per-particle weights
@@ -1295,24 +1295,31 @@ export default function SceneV2(props: ISceneV2Props) {
           finalZ + Math.sin(tOscShape * 1.1 + phase * 1.3) * shapeJitter;
       }
 
-      // Advance the Beat 2 warmup (0→1 over 3 s) so boid forces engage gradually.
-      beat2WarmupRef.current = Math.min(1, beat2WarmupRef.current + dt / 3.0);
+      // Advance the Beat 2 warmup (0→1 over 5 s) for a gradual graceful ramp-in.
+      beat2WarmupRef.current = Math.min(1, beat2WarmupRef.current + dt / 5.0);
+      const b2Warmup = beat2WarmupRef.current;
 
+      // Only orbit particles use boid flocking in Beat 2 — primary particles use
+      // deterministic swirl forces instead, preventing the "gnats" chaotic feeling.
       stepBoids(
-        particles as unknown as IBoidParticle[],
+        orbitParticlesRef.current as unknown as IBoidParticle[],
         ORBIT_BOID_PARAMS,
         elapsed,
       );
 
-      // Scale boid velocity contributions by warmup factor to prevent gnats at Beat 2 entry.
-      // At entry (warmup≈0) velocities are near-zero; at 3 s (warmup=1) full boid motion resumes.
-      const b2Warmup = beat2WarmupRef.current;
-      if (b2Warmup < 1) {
-        for (let i = 0; i < n; i++) {
-          particles[i].vx *= b2Warmup;
-          particles[i].vy *= b2Warmup;
-          particles[i].vz *= b2Warmup;
-        }
+      // Gentle deterministic swirl force around Y axis for primary particles.
+      // Gives each particle a continuous rotation as it spirals toward its cube target
+      // — leaves slowly spiraling down rather than gnats rushing chaotically.
+      const swirl2Strength = 0.0004 * b2Warmup;
+      for (let i = 0; i < primaryCount; i++) {
+        const p = particles[i];
+        const px = p.x;
+        const pz = p.z;
+        const dist2d = Math.sqrt(px * px + pz * pz) + 0.001;
+        const tx = -pz / dist2d;
+        const tz = px / dist2d;
+        p.vx += tx * swirl2Strength;
+        p.vz += tz * swirl2Strength;
       }
 
       if (formTransitionRef.current === "cascade") {
@@ -1334,11 +1341,15 @@ export default function SceneV2(props: ISceneV2Props) {
           p.vz *= 0.45;
         }
       } else {
-        // Scale lerp speed so the transition reaches ~99% in beatDuration seconds.
+        // Lerp speed scaled for ~80% convergence by end of beat; warmup ramps from 0
+        // so particles start near-stationary and gracefully spiral into position.
         // fast mode uses a 5× multiplier to preserve the relative "snap" feel.
-        const baseLerp2 = 4.6 / Math.max(beatDurationRef.current, 1);
+        const baseLerp2 = 2.3 / Math.max(beatDurationRef.current, 1);
+        const effectiveLerp2 = baseLerp2 * b2Warmup;
         const lerpSpeed2 =
-          formTransitionRef.current === "fast" ? baseLerp2 * 5 : baseLerp2;
+          formTransitionRef.current === "fast"
+            ? effectiveLerp2 * 5
+            : effectiveLerp2;
         const shapeAlpha2 =
           (1 - Math.exp(-lerpSpeed2 * dt)) *
           lerpWeightRef.current *
@@ -1351,6 +1362,20 @@ export default function SceneV2(props: ISceneV2Props) {
           p.vx *= 0.45;
           p.vy *= 0.45;
           p.vz *= 0.45;
+        }
+      }
+
+      // Speed cap for primary particles: much lower than orbit particles to prevent
+      // the chaotic "gnats" feel — particles move gracefully toward their targets.
+      const BEAT2_SPEED_LIMIT = 0.0008;
+      for (let i = 0; i < primaryCount; i++) {
+        const p = particles[i];
+        const speed2 = Math.sqrt(p.vx * p.vx + p.vy * p.vy + p.vz * p.vz);
+        if (speed2 > BEAT2_SPEED_LIMIT) {
+          const scale = BEAT2_SPEED_LIMIT / speed2;
+          p.vx *= scale;
+          p.vy *= scale;
+          p.vz *= scale;
         }
       }
 
