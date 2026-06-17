@@ -284,13 +284,35 @@ function EditableSliderValue({
   );
 }
 
+// ── localStorage persistence ──────────────────────────────────────────────────
+
+const STORAGE_KEY = "sculpture-v4-settings";
+
+function loadSettings(): Record<string, unknown> | null {
+  try {
+    const raw = localStorage.getItem(STORAGE_KEY);
+    if (!raw) return null;
+    return JSON.parse(raw) as Record<string, unknown>;
+  } catch {
+    return null;
+  }
+}
+
+function saveSettings(settings: object) {
+  try {
+    localStorage.setItem(STORAGE_KEY, JSON.stringify(settings));
+  } catch {}
+}
+
 // ── Component ─────────────────────────────────────────────────────────────────
 
 export default function AppV2() {
+  const saved = loadSettings();
+
   // ── Beat & timeline state ─────────────────────────────────────────────────
   const [beat, setBeat] = useState<TBeat>(0);
   const [beatDurations, setBeatDurations] = useState<Record<TBeat, number>>(
-    DEFAULT_BEAT_DURATIONS,
+    (saved?.beatDurations as Record<TBeat, number>) ?? DEFAULT_BEAT_DURATIONS,
   );
 
   // ── Dynamic scrubber weights (mirror beatDurations) ──────────────────────
@@ -343,44 +365,77 @@ export default function AppV2() {
 
   // ── Settings ──────────────────────────────────────────────────────────────
   // Fixed swarm count — Dense/Sparse only affects the surface skin layer.
-  const [densityLabel, setDensityLabel] = useState<TDensityLabel>("Medium");
+  const [densityLabel, setDensityLabel] = useState<TDensityLabel>(
+    (saved?.densityLabel as TDensityLabel) ?? "Medium",
+  );
   const densityPreset =
     DENSITY_PRESETS.find((p) => p.label === densityLabel) ?? DENSITY_PRESETS[1];
   const particleCount = densityPreset.swarmCount;
   const skinParticleCount = densityPreset.skinCount;
-  const [particleSize, setParticleSize] = useState(0.0033);
-  const [opacity, setOpacity] = useState(0.8);
-  const [swirlStrength, setSwirlStrength] = useState(0.001);
+  const [particleSize, setParticleSize] = useState(
+    (saved?.particleSize as number) ?? 0.0033,
+  );
+  const [opacity, setOpacity] = useState((saved?.opacity as number) ?? 0.8);
+  const [swirlStrength, setSwirlStrength] = useState(
+    (saved?.swirlStrength as number) ?? 0.001,
+  );
   const [revealMode, setRevealMode] = useState<"anatomical" | "random">(
-    "random",
+    (saved?.revealMode as "anatomical" | "random") ?? "random",
   );
   const [formTransition, setFormTransition] = useState<
     "fast" | "drift" | "cascade"
-  >("drift");
+  >((saved?.formTransition as "fast" | "drift" | "cascade") ?? "drift");
   const [hintSpeed, setHintSpeed] = useState<"subtle" | "slow" | "medium">(
-    "slow",
+    (saved?.hintSpeed as "subtle" | "slow" | "medium") ?? "slow",
   );
   const [revealPacing, setRevealPacing] = useState<
     "dramatic" | "burst" | "current"
-  >("current");
+  >((saved?.revealPacing as "dramatic" | "burst" | "current") ?? "current");
   const [surfaceMotion, setSurfaceMotion] = useState<
     "still" | "shimmer" | "breathe" | "flow"
-  >("flow");
-  const [surfaceDepthBias, setSurfaceDepthBias] =
-    useState<TSurfaceDepthBias>("crease");
-  const [depthSizing, setDepthSizing] = useState<TDepthSizing>("depth");
-  const [depthOpacityMode, setDepthOpacityMode] =
-    useState<TDepthOpacityMode>("off");
-  const [cubeScale, setCubeScale] = useState(1.5);
-  const [hintCycles, setHintCycles] = useState(3);
-  const [hintStyle, setHintStyle] = useState<THintStyle>("bulge");
-  const [hintSpread, setHintSpread] = useState(0.54);
-  const [hintShape, setHintShape] = useState<THintShape>("blob");
-  const [hintMeltSpeed, setHintMeltSpeed] = useState(1.0);
-  const [revealStages, setRevealStages] = useState(4);
-  const [waveSpeed, setWaveSpeed] = useState(1.5);
-  const [transitionDuration, setTransitionDuration] = useState(2.25);
-  const [particleColor, setParticleColor] = useState("#c8cad4");
+  >(
+    (saved?.surfaceMotion as "still" | "shimmer" | "breathe" | "flow") ??
+      "flow",
+  );
+  const [surfaceDepthBias, setSurfaceDepthBias] = useState<TSurfaceDepthBias>(
+    (saved?.surfaceDepthBias as TSurfaceDepthBias) ?? "crease",
+  );
+  const [depthSizing, setDepthSizing] = useState<TDepthSizing>(
+    (saved?.depthSizing as TDepthSizing) ?? "depth",
+  );
+  const [depthOpacityMode, setDepthOpacityMode] = useState<TDepthOpacityMode>(
+    (saved?.depthOpacityMode as TDepthOpacityMode) ?? "off",
+  );
+  const [cubeScale, setCubeScale] = useState(
+    (saved?.cubeScale as number) ?? 1.5,
+  );
+  const [hintCycles, setHintCycles] = useState(
+    (saved?.hintCycles as number) ?? 3,
+  );
+  const [hintStyle, setHintStyle] = useState<THintStyle>(
+    (saved?.hintStyle as THintStyle) ?? "bulge",
+  );
+  const [hintSpread, setHintSpread] = useState(
+    (saved?.hintSpread as number) ?? 0.54,
+  );
+  const [hintShape, setHintShape] = useState<THintShape>(
+    (saved?.hintShape as THintShape) ?? "blob",
+  );
+  const [hintMeltSpeed, setHintMeltSpeed] = useState(
+    (saved?.hintMeltSpeed as number) ?? 1.0,
+  );
+  const [revealStages, setRevealStages] = useState(
+    (saved?.revealStages as number) ?? 4,
+  );
+  const [waveSpeed, setWaveSpeed] = useState(
+    (saved?.waveSpeed as number) ?? 1.5,
+  );
+  const [transitionDuration, setTransitionDuration] = useState(
+    (saved?.transitionDuration as number) ?? 2.25,
+  );
+  const [particleColor, setParticleColor] = useState(
+    (saved?.particleColor as string) ?? "#c8cad4",
+  );
 
   // ── Panel state ───────────────────────────────────────────────────────────
   const [beatsOpen, setBeatsOpen] = useState(false);
@@ -393,13 +448,94 @@ export default function AppV2() {
 
   // ── Figure orientation state ──────────────────────────────────────────────
   const [debugSectionOpen, setDebugSectionOpen] = useState(false);
-  const [debugRotX, setDebugRotX] = useState(-1.59);
-  const [debugRotY, setDebugRotY] = useState(0.01);
-  const [debugRotZ, setDebugRotZ] = useState(-0.19);
-  const [figureScale, setFigureScale] = useState(2.0);
-  const [figurePosX, setFigurePosX] = useState(-0.1);
-  const [figurePosY, setFigurePosY] = useState(0.4);
-  const [figurePosZ, setFigurePosZ] = useState(0.0);
+  const [debugRotX, setDebugRotX] = useState(
+    (saved?.debugRotX as number) ?? -1.59,
+  );
+  const [debugRotY, setDebugRotY] = useState(
+    (saved?.debugRotY as number) ?? 0.01,
+  );
+  const [debugRotZ, setDebugRotZ] = useState(
+    (saved?.debugRotZ as number) ?? -0.19,
+  );
+  const [figureScale, setFigureScale] = useState(
+    (saved?.figureScale as number) ?? 2.0,
+  );
+  const [figurePosX, setFigurePosX] = useState(
+    (saved?.figurePosX as number) ?? -0.1,
+  );
+  const [figurePosY, setFigurePosY] = useState(
+    (saved?.figurePosY as number) ?? 0.4,
+  );
+  const [figurePosZ, setFigurePosZ] = useState(
+    (saved?.figurePosZ as number) ?? 0.0,
+  );
+
+  // ── Persist user-tunable settings to localStorage ────────────────────────
+  useEffect(() => {
+    saveSettings({
+      beatDurations,
+      densityLabel,
+      particleSize,
+      opacity,
+      swirlStrength,
+      revealMode,
+      formTransition,
+      hintSpeed,
+      revealPacing,
+      surfaceMotion,
+      surfaceDepthBias,
+      depthSizing,
+      depthOpacityMode,
+      cubeScale,
+      hintCycles,
+      hintStyle,
+      hintSpread,
+      hintShape,
+      hintMeltSpeed,
+      revealStages,
+      waveSpeed,
+      transitionDuration,
+      particleColor,
+      figureScale,
+      figurePosX,
+      figurePosY,
+      figurePosZ,
+      debugRotX,
+      debugRotY,
+      debugRotZ,
+    });
+  }, [
+    beatDurations,
+    densityLabel,
+    particleSize,
+    opacity,
+    swirlStrength,
+    revealMode,
+    formTransition,
+    hintSpeed,
+    revealPacing,
+    surfaceMotion,
+    surfaceDepthBias,
+    depthSizing,
+    depthOpacityMode,
+    cubeScale,
+    hintCycles,
+    hintStyle,
+    hintSpread,
+    hintShape,
+    hintMeltSpeed,
+    revealStages,
+    waveSpeed,
+    transitionDuration,
+    particleColor,
+    figureScale,
+    figurePosX,
+    figurePosY,
+    figurePosZ,
+    debugRotX,
+    debugRotY,
+    debugRotZ,
+  ]);
 
   // ── Text overlay state ────────────────────────────────────────────────────
   const [displayedOverlay, setDisplayedOverlay] = useState<IOverlayContent>(
