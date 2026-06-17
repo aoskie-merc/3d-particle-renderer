@@ -183,8 +183,8 @@ function lerp(a: number, b: number, t: number): number {
 }
 
 /**
- * Returns a morphed particle target that cycles continuously through
- * cube → sphere → elongated cube → cube as morphPhase (cycles) advances.
+ * Returns a morphed particle target that smoothly oscillates between
+ * cube ↔ sphere as morphPhase (cycles) advances.
  * morphPhase is driven by beat3Elapsed * breatheSpeed for a slow, dreamy effect.
  */
 function morphCubeTarget(
@@ -193,42 +193,22 @@ function morphCubeTarget(
   cubeZ: number,
   morphPhase: number,
 ): [number, number, number] {
-  const cycle = morphPhase % 1;
+  // Oscillate between cube and sphere using a sine wave
+  // morphPhase increases over time; sin goes -1→1, remap to 0→1
+  const t = (Math.sin(morphPhase * Math.PI * 2) + 1) / 2; // 0→1→0→1...
+  const smooth = t * t * (3 - 2 * t); // smoothstep
 
   const r = Math.sqrt(cubeX * cubeX + cubeY * cubeY + cubeZ * cubeZ);
-  const sphereX = r > 0 ? (cubeX / r) * 0.57 : 0;
-  const sphereY = r > 0 ? (cubeY / r) * 0.57 : 0;
-  const sphereZ = r > 0 ? (cubeZ / r) * 0.57 : 0;
+  const sphereScale = r > 0 ? 0.57 / r : 0;
+  const sphereX = cubeX * sphereScale;
+  const sphereY = cubeY * sphereScale;
+  const sphereZ = cubeZ * sphereScale;
 
-  const elongX = cubeX * 0.6;
-  const elongY = cubeY * 1.6;
-  const elongZ = cubeZ * 0.6;
-
-  // Sequence: cube(0) → sphere(0.25) → elongated(0.5) → cube(0.75) → cube(1.0)
-  if (cycle < 0.25) {
-    const t = smoothstep(cycle / 0.25);
-    return [
-      lerp(cubeX, sphereX, t),
-      lerp(cubeY, sphereY, t),
-      lerp(cubeZ, sphereZ, t),
-    ];
-  } else if (cycle < 0.5) {
-    const t = smoothstep((cycle - 0.25) / 0.25);
-    return [
-      lerp(sphereX, elongX, t),
-      lerp(sphereY, elongY, t),
-      lerp(sphereZ, elongZ, t),
-    ];
-  } else if (cycle < 0.75) {
-    const t = smoothstep((cycle - 0.5) / 0.25);
-    return [
-      lerp(elongX, cubeX, t),
-      lerp(elongY, cubeY, t),
-      lerp(elongZ, cubeZ, t),
-    ];
-  } else {
-    return [cubeX, cubeY, cubeZ];
-  }
+  return [
+    lerp(cubeX, sphereX, smooth),
+    lerp(cubeY, sphereY, smooth),
+    lerp(cubeZ, sphereZ, smooth),
+  ];
 }
 
 // ── Types ─────────────────────────────────────────────────────────────────────
