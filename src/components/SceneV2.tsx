@@ -177,6 +177,9 @@ const _scratchCamDir = new Vector3();
 // pose (base + approvedRotX/Y), matching the XYZ Euler order Three.js uses for
 // figureGroupRef. This replaces the old manual cosZ/sinZ+cosX/sinX math which
 // approximated rotation around world -Z and caused squishing under compound Euler angles.
+// Applied as Q_delta * (homePos − posOffset) + posOffset so the rotation pivots
+// around the figure centroid rather than the world origin (the origin-pivot bug
+// was the remaining squish source for compound/tilt rotations).
 const _beat5EulerBase = new Euler();
 const _beat5EulerNew = new Euler();
 const _beat5QuatBase = new Quaternion();
@@ -930,7 +933,7 @@ export default function SceneV2(props: ISceneV2Props) {
 
     // Apply the current rotation/scale transform so home targets reflect the
     // oriented figure, not the raw unrotated mesh positions.
-    const rot = debugMeshRotationRef.current ?? { x: -1.59, y: 0.01, z: 0.01 };
+    const rot = debugMeshRotationRef.current ?? { x: -1.59, y: 0.01, z: -0.19 };
     const centroid = applyRotationToHomes(
       particles,
       rawHomePositionsRef.current,
@@ -1000,7 +1003,7 @@ export default function SceneV2(props: ISceneV2Props) {
     const rawPos = rawHomePositionsRef.current;
     if (particles.length === 0 || rawPos.length === 0) return;
 
-    const rot = debugMeshRotation ?? { x: -1.59, y: 0.01, z: 0.01 };
+    const rot = debugMeshRotation ?? { x: -1.59, y: 0.01, z: -0.19 };
     const centroid = applyRotationToHomes(
       particles,
       rawPos,
@@ -1263,6 +1266,14 @@ export default function SceneV2(props: ISceneV2Props) {
     const currentBeat = beatRef.current;
     const n = particles.length;
 
+    // Pivot point = figure centroid = posOffset (homeX/Y/Z values are centered
+    // here by applyRotationToHomes). Q_delta must rotate around this point, not
+    // the world origin, otherwise the off-center centroid gets rotated and causes
+    // apparent squishing/distortion during drag.
+    const beat5PivotX = figurePosXRef.current;
+    const beat5PivotY = figurePosYRef.current;
+    const beat5PivotZ = figurePosZRef.current;
+
     // Smoothly scale skin particles down 20% in Reveal (beat 4) and Approved (beat 5).
     const skinSizeTarget = currentBeat === 4 || currentBeat === 5 ? 0.8 : 1.0;
     skinSizeMultiplierRef.current +=
@@ -1297,7 +1308,7 @@ export default function SceneV2(props: ISceneV2Props) {
       const baseRot = debugMeshRotationRef.current ?? {
         x: -1.59,
         y: 0.01,
-        z: 0.01,
+        z: -0.19,
       };
       _beat5EulerBase.set(baseRot.x, baseRot.y, baseRot.z, "XYZ");
       _beat5EulerNew.set(
@@ -1398,11 +1409,17 @@ export default function SceneV2(props: ISceneV2Props) {
         } else {
           // Quaternion delta: rotates home position from base pose to current pose,
           // matching the exact XYZ Euler rotation applied to figureGroupRef.
-          _beat5Vec.set(p.homeX, p.homeY, p.homeZ);
+          // Subtract pivot before rotating and add back after so the figure
+          // rotates around its centroid (posOffset), not the world origin.
+          _beat5Vec.set(
+            p.homeX - beat5PivotX,
+            p.homeY - beat5PivotY,
+            p.homeZ - beat5PivotZ,
+          );
           _beat5Vec.applyQuaternion(_beat5QuatDelta);
-          p.targetX = _beat5Vec.x;
-          p.targetY = _beat5Vec.y;
-          p.targetZ = _beat5Vec.z;
+          p.targetX = _beat5Vec.x + beat5PivotX;
+          p.targetY = _beat5Vec.y + beat5PivotY;
+          p.targetZ = _beat5Vec.z + beat5PivotZ;
         }
       }
     } else {
@@ -1904,7 +1921,11 @@ export default function SceneV2(props: ISceneV2Props) {
           }
           for (let i = 0; i < primaryCount; i++) {
             const p = particles[i];
-            _beat5Vec.set(p.homeX, p.homeY, p.homeZ);
+            _beat5Vec.set(
+              p.homeX - beat5PivotX,
+              p.homeY - beat5PivotY,
+              p.homeZ - beat5PivotZ,
+            );
             _beat5Vec.applyQuaternion(_beat5QuatDelta);
             const rhX = _beat5Vec.x;
             const rhY = _beat5Vec.y;
@@ -1913,13 +1934,13 @@ export default function SceneV2(props: ISceneV2Props) {
             if (homeLen > 1e-6) {
               const invLen = 1 / homeLen;
               const off = shimmerOffs[i];
-              p.targetX = rhX + rhX * invLen * off;
-              p.targetY = rhY + rhY * invLen * off;
-              p.targetZ = rhZ + rhZ * invLen * off;
+              p.targetX = rhX + rhX * invLen * off + beat5PivotX;
+              p.targetY = rhY + rhY * invLen * off + beat5PivotY;
+              p.targetZ = rhZ + rhZ * invLen * off + beat5PivotZ;
             } else {
-              p.targetX = rhX;
-              p.targetY = rhY;
-              p.targetZ = rhZ;
+              p.targetX = rhX + beat5PivotX;
+              p.targetY = rhY + beat5PivotY;
+              p.targetZ = rhZ + beat5PivotZ;
             }
           }
         } else if (motion === "breathe" && !isRigidFrame) {
@@ -1927,7 +1948,11 @@ export default function SceneV2(props: ISceneV2Props) {
           const breatheOffset = Math.sin(elapsed * 0.8) * 0.04;
           for (let i = 0; i < primaryCount; i++) {
             const p = particles[i];
-            _beat5Vec.set(p.homeX, p.homeY, p.homeZ);
+            _beat5Vec.set(
+              p.homeX - beat5PivotX,
+              p.homeY - beat5PivotY,
+              p.homeZ - beat5PivotZ,
+            );
             _beat5Vec.applyQuaternion(_beat5QuatDelta);
             const rhX = _beat5Vec.x;
             const rhY = _beat5Vec.y;
@@ -1935,20 +1960,24 @@ export default function SceneV2(props: ISceneV2Props) {
             const homeLen = Math.sqrt(rhX * rhX + rhY * rhY + rhZ * rhZ);
             if (homeLen > 1e-6) {
               const invLen = 1 / homeLen;
-              p.targetX = rhX + rhX * invLen * breatheOffset;
-              p.targetY = rhY + rhY * invLen * breatheOffset;
-              p.targetZ = rhZ + rhZ * invLen * breatheOffset;
+              p.targetX = rhX + rhX * invLen * breatheOffset + beat5PivotX;
+              p.targetY = rhY + rhY * invLen * breatheOffset + beat5PivotY;
+              p.targetZ = rhZ + rhZ * invLen * breatheOffset + beat5PivotZ;
             } else {
-              p.targetX = rhX;
-              p.targetY = rhY;
-              p.targetZ = rhZ;
+              p.targetX = rhX + beat5PivotX;
+              p.targetY = rhY + beat5PivotY;
+              p.targetZ = rhZ + beat5PivotZ;
             }
           }
         } else if (motion === "flow" && !isRigidFrame) {
           // Each particle has its own independent per-particle noise phase offset
           for (let i = 0; i < primaryCount; i++) {
             const p = particles[i];
-            _beat5Vec.set(p.homeX, p.homeY, p.homeZ);
+            _beat5Vec.set(
+              p.homeX - beat5PivotX,
+              p.homeY - beat5PivotY,
+              p.homeZ - beat5PivotZ,
+            );
             _beat5Vec.applyQuaternion(_beat5QuatDelta);
             const rhX = _beat5Vec.x;
             const rhY = _beat5Vec.y;
@@ -1957,13 +1986,13 @@ export default function SceneV2(props: ISceneV2Props) {
             if (homeLen > 1e-6) {
               const invLen = 1 / homeLen;
               const flowOffset = Math.sin(elapsed * 0.6 + i * 0.37) * 0.025;
-              p.targetX = rhX + rhX * invLen * flowOffset;
-              p.targetY = rhY + rhY * invLen * flowOffset;
-              p.targetZ = rhZ + rhZ * invLen * flowOffset;
+              p.targetX = rhX + rhX * invLen * flowOffset + beat5PivotX;
+              p.targetY = rhY + rhY * invLen * flowOffset + beat5PivotY;
+              p.targetZ = rhZ + rhZ * invLen * flowOffset + beat5PivotZ;
             } else {
-              p.targetX = rhX;
-              p.targetY = rhY;
-              p.targetZ = rhZ;
+              p.targetX = rhX + beat5PivotX;
+              p.targetY = rhY + beat5PivotY;
+              p.targetZ = rhZ + beat5PivotZ;
             }
           }
         } else {
@@ -1972,11 +2001,15 @@ export default function SceneV2(props: ISceneV2Props) {
           // offset so the figure stays perfectly rigid while the user drags.
           for (let i = 0; i < primaryCount; i++) {
             const p = particles[i];
-            _beat5Vec.set(p.homeX, p.homeY, p.homeZ);
+            _beat5Vec.set(
+              p.homeX - beat5PivotX,
+              p.homeY - beat5PivotY,
+              p.homeZ - beat5PivotZ,
+            );
             _beat5Vec.applyQuaternion(_beat5QuatDelta);
-            p.targetX = _beat5Vec.x;
-            p.targetY = _beat5Vec.y;
-            p.targetZ = _beat5Vec.z;
+            p.targetX = _beat5Vec.x + beat5PivotX;
+            p.targetY = _beat5Vec.y + beat5PivotY;
+            p.targetZ = _beat5Vec.z + beat5PivotZ;
           }
         }
 
