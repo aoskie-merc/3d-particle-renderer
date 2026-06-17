@@ -49,8 +49,8 @@ const TRANSITION_DURATION = 0.5; // seconds
 export const CAMERA_POSITIONS: Record<TBeat, [number, number, number]> = {
   0: [0, 0, 6], // Beat 0: facing the XY ring, looking through the donut hole
   1: [-0.8, 0.4, 4.5], // Beat 1: pulled back to give particles room to swirl in
-  2: [-1.0, 0.3, 3.8], // Beat 2: medium distance, 3/4 angle for geometric shape
-  3: [-1.0, 0.3, 3.6], // Beat 3: slightly closer as shape hints at figure
+  2: [-1.4, 0.5, 3.5], // Beat 2: dramatic side angle, elevated — showcases 3D cube
+  3: [-1.4, 0.5, 3.3], // Beat 3: same dramatic angle, slightly closer for hint
   4: [-1.2, 0.3, 3.2], // Beat 4: close, intimate reveal angle matching v1
   5: [-1.2, 0.3, 3.2], // Beat 5 (Approved): same as v1 framing
 };
@@ -1022,6 +1022,9 @@ export default function SceneV2(props: ISceneV2Props) {
     // Reset cascade timer when entering beat 2
     if (beat === 2) {
       beat2StartTimeRef.current = -1; // initialized on first useFrame tick
+      // Start at a dramatic angle so cube is immediately recognizable as 3D
+      shapeRotationRef.current = Math.PI / 5; // 36° — clear diagonal view
+      shapeRotationXRef.current = Math.PI / 8; // 22.5° — visible top face
     }
 
     // Reset Beat 3 melt state
@@ -1204,8 +1207,8 @@ export default function SceneV2(props: ISceneV2Props) {
     if (currentBeat === 2) {
       // ── Beat 2: rotating geometric shape + jitter + orbiting particles ───
 
-      shapeRotationRef.current += 0.001 * dt * 60;
-      shapeRotationXRef.current += (0.001 / 20) * dt * 60;
+      shapeRotationRef.current += 0.003 * dt * 60;
+      shapeRotationXRef.current += 0.001 * dt * 60;
 
       const cosY = Math.cos(shapeRotationRef.current);
       const sinY = Math.sin(shapeRotationRef.current);
@@ -1352,8 +1355,8 @@ export default function SceneV2(props: ISceneV2Props) {
         1.0 + Math.sin(beat3Elapsed * 0.8) * 0.03 * meltProgress;
 
       // Cube continues to rotate (same as Beat 2)
-      shapeRotationRef.current += 0.001 * dt * 60;
-      shapeRotationXRef.current += (0.001 / 20) * dt * 60;
+      shapeRotationRef.current += 0.003 * dt * 60;
+      shapeRotationXRef.current += 0.001 * dt * 60;
       const cosY3 = Math.cos(shapeRotationRef.current);
       const sinY3 = Math.sin(shapeRotationRef.current);
       const cosX3 = Math.cos(shapeRotationXRef.current);
