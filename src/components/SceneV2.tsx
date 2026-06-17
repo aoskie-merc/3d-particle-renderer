@@ -496,6 +496,12 @@ export default function SceneV2(props: ISceneV2Props) {
 
   const beat2StartTimeRef = useRef(-1);
   const beat5StartTimeRef = useRef(-1);
+  /**
+   * Ramps 0→1 over 3 s at the start of Beat 2 to gently ease boid forces in.
+   * Prevents the "gnats" burst that occurs when boid forces restart at full
+   * strength before the lerp-to-cube has warmed up.
+   */
+  const beat2WarmupRef = useRef(0);
 
   // ── Beat 4 multi-wave reveal state ────────────────────────────────────────
 
@@ -569,10 +575,10 @@ export default function SceneV2(props: ISceneV2Props) {
       p.initialX = p.x;
       p.initialY = p.y;
       p.initialZ = p.z;
-      const speed = 0.004 + Math.random() * 0.003;
-      p.vx = -Math.sin(angle) * speed + (Math.random() - 0.5) * 0.002;
-      p.vy = Math.cos(angle) * speed + (Math.random() - 0.5) * 0.002;
-      p.vz = (Math.random() - 0.5) * 0.001;
+      const speed = 0.001 + Math.random() * 0.0007; // matched to INITIAL_BOID_PARAMS speed range
+      p.vx = -Math.sin(angle) * speed + (Math.random() - 0.5) * 0.0008;
+      p.vy = Math.cos(angle) * speed + (Math.random() - 0.5) * 0.0008;
+      p.vz = (Math.random() - 0.5) * 0.0005;
       p.targetX = p.x;
       p.targetY = p.y;
       p.targetZ = p.z;
@@ -967,6 +973,7 @@ export default function SceneV2(props: ISceneV2Props) {
     // Reset cascade timer when entering beat 2
     if (beat === 2) {
       beat2StartTimeRef.current = -1; // initialized on first useFrame tick
+      beat2WarmupRef.current = 0; // boid forces ramp in over 3 s to prevent gnats burst
     }
 
     // Reset Beat 3 morphing clay state and pre-compute per-particle weights
@@ -1277,11 +1284,25 @@ export default function SceneV2(props: ISceneV2Props) {
           finalZ + Math.sin(tOscShape * 1.1 + phase * 1.3) * shapeJitter;
       }
 
+      // Advance the Beat 2 warmup (0→1 over 3 s) so boid forces engage gradually.
+      beat2WarmupRef.current = Math.min(1, beat2WarmupRef.current + dt / 3.0);
+
       stepBoids(
         particles as unknown as IBoidParticle[],
         ORBIT_BOID_PARAMS,
         elapsed,
       );
+
+      // Scale boid velocity contributions by warmup factor to prevent gnats at Beat 2 entry.
+      // At entry (warmup≈0) velocities are near-zero; at 3 s (warmup=1) full boid motion resumes.
+      const b2Warmup = beat2WarmupRef.current;
+      if (b2Warmup < 1) {
+        for (let i = 0; i < n; i++) {
+          particles[i].vx *= b2Warmup;
+          particles[i].vy *= b2Warmup;
+          particles[i].vz *= b2Warmup;
+        }
+      }
 
       if (formTransitionRef.current === "cascade") {
         if (beat2StartTimeRef.current < 0) beat2StartTimeRef.current = elapsed;
@@ -1879,9 +1900,9 @@ export default function SceneV2(props: ISceneV2Props) {
           const dx = p.x / safeDist;
           const dy = p.y / safeDist;
 
-          // Strong spring toward ring target (0.0042 = 0.006 × 0.7, 30% slower)
+          // Spring toward ring target (0.003 = 0.0042 × ~0.7, another 30% reduction for graceful drift)
           const delta = dist - ringTarget;
-          const springForce = -delta * 0.0042;
+          const springForce = -delta * 0.003;
           p.vx += dx * springForce;
           p.vy += dy * springForce;
 

@@ -31,17 +31,17 @@ export const SWIRL_BOID_PARAMS: IBoidParams = {
   ...BOID_DEFAULTS,
   visualRange: 0.12,
   separationDist: 0.025,
-  separationFactor: 0.0005,
+  separationFactor: 0.0004, // reduced ~20% from 0.0005 — less darting away from neighbours
   alignmentFactor: 0.001,
-  cohesionFactor: 0.0003,
+  cohesionFactor: 0.00024, // reduced ~20% from 0.0003 — less rushing toward centre
   attractorFactor: 0,
   attractorBoost: 1,
   homeSpringFactor: 0,
   maxHomeDistance: 0.4,
-  speedLimit: 0.004,
-  minSpeed: 0.001,
+  speedLimit: 0.0024, // reduced ~40% from 0.004 — graceful swirl pace
+  minSpeed: 0.0006, // reduced ~40% from 0.001 — still moving, never stalling
   noiseMagnitude: 0.00015,
-  swirlStrength: 0.001,
+  swirlStrength: 0.0013, // increased ~30% from 0.001 — maintains swirling quality at lower speed
   splitIntensity: 0.05,
   splitSpeed: 2.5,
   splitDecay: 3.0,
@@ -60,9 +60,9 @@ export const INITIAL_BOID_PARAMS: IBoidParams = {
   ...SWIRL_BOID_PARAMS,
   cohesionFactor: 0,
   alignmentFactor: 0,
-  separationFactor: 0.0002,
-  speedLimit: 0.0028, // 0.004 × 0.7 — 30% slower than Beat 1
-  minSpeed: 0.0007, // 0.001 × 0.7 — 30% slower than Beat 1
+  separationFactor: 0.00016, // reduced ~20% from 0.0002 — calmer ring drift
+  speedLimit: 0.0017, // 0.0024 × 0.7 — 30% slower than Beat 1
+  minSpeed: 0.0004, // 0.0006 × 0.7 — 30% slower than Beat 1
 };
 
 /** Orbit / atmosphere particles – gentle cohesion, very low speed, used during beats 2/3/4/5. */
@@ -70,17 +70,17 @@ export const ORBIT_BOID_PARAMS: IBoidParams = {
   ...BOID_DEFAULTS,
   visualRange: 0.15,
   separationDist: 0.03,
-  separationFactor: 0.001,
+  separationFactor: 0.0008, // reduced ~20% from 0.001 — less darting
   alignmentFactor: 0.002,
-  cohesionFactor: 0.0002,
+  cohesionFactor: 0.00016, // reduced ~20% from 0.0002 — less rushing toward centre
   attractorFactor: 0.0002,
   attractorBoost: 1,
   homeSpringFactor: 0.00005,
   maxHomeDistance: 1.5,
-  speedLimit: 0.0015, // reduced from 0.003 — slower orbital motion at beats 4/5
-  minSpeed: 0.0004, // halved accordingly
+  speedLimit: 0.0009, // reduced ~40% from 0.0015 — slow graceful orbital drift
+  minSpeed: 0.00025, // reduced ~40% from 0.0004
   noiseMagnitude: 0.0001,
-  swirlStrength: 0.0002, // reduced from 0.0005 — less angular velocity around the figure
+  swirlStrength: 0.00026, // increased ~30% from 0.0002 — maintains swirling at lower speed
   splitIntensity: 0.0,
   splitSpeed: 1.0,
   splitDecay: 2.0,
@@ -171,10 +171,10 @@ export function createParticlesV2(
     // Tangential velocity — particles orbit the center, not fall into it
     const tangentX = -Math.sin(angle);
     const tangentY = Math.cos(angle);
-    const speed = 0.004 + Math.random() * 0.003;
-    const ivx = tangentX * speed + (Math.random() - 0.5) * 0.002;
-    const ivy = tangentY * speed + (Math.random() - 0.5) * 0.002;
-    const ivz = (Math.random() - 0.5) * 0.001;
+    const speed = 0.001 + Math.random() * 0.0007; // matched to INITIAL_BOID_PARAMS speed range (0.0017 limit)
+    const ivx = tangentX * speed + (Math.random() - 0.5) * 0.0008;
+    const ivy = tangentY * speed + (Math.random() - 0.5) * 0.0008;
+    const ivz = (Math.random() - 0.5) * 0.0005;
 
     particles[i] = {
       x: px,
@@ -344,7 +344,7 @@ export function getLerpSpeedForBeat(beat: TBeat): number {
     case 0:
       return 1.0; // initial: frozen (not used)
     case 1:
-      return 0.8; // swirl in: gentle inward drift toward halfway
+      return 0.56; // swirl in: gentle inward drift toward halfway (reduced 30% for slower ease-in)
     case 2:
       return 1.5; // form: ~90% there in 1.5 s
     case 3:
