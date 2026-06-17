@@ -227,7 +227,10 @@ void main() {
   vec3 N = normalize(mat3(normalMatrix) * instanceNormal);
   vec3 V = normalize(camWorldPos - worldPos.xyz);
 
-  float edge = 1.0 - clamp(abs(dot(N, V)), 0.0, 1.0);
+  // Camera-facing dot product: +1 = faces camera, -1 = faces away
+  float facing = dot(N, V);
+
+  float edge = 1.0 - clamp(abs(facing), 0.0, 1.0);
 
   float NdL = max(dot(N, lightWorldDir), 0.0);
   float normalOpacity = mix(1.0, NdL, skinNormalShading);
@@ -242,8 +245,21 @@ void main() {
   float contourPow = mix(2.05, 1.5, isDarkMode);
   float contourGlow = pow(edge, contourPow);
   float contourAmp = mix(1.0, 1.0 + contourGlow * 0.62, clamp(skinContourDensity, 0.0, 1.0));
+
+  // 1. Camera-facing opacity boost: bright when facing camera, dim when facing away
+  float opacityMult = pow(max(0.0, facing * 0.5 + 0.7), 1.8);
+  opacityMult = clamp(opacityMult, 0.15, 1.0);
+
+  // 2. Rim enhancement: silhouette-edge particles get a subtle halo boost
+  float rimFactor = 1.0 - abs(facing);
+  float rimBoost = 0.3 * pow(rimFactor, 2.0);
+  float finalOpacityMult = clamp(opacityMult + rimBoost, 0.0, 1.0);
+
+  // 3. Size variation by facing angle: front-facing particles slightly larger
+  float sizeMult = 0.7 + 0.6 * max(0.0, facing);
   float radialSize =
     particleWorldRadius
+    * sizeMult
     * (1.0 - 0.3 * skinDepthFade * nDist)
     * mix(1.0, 1.0 + edge * 0.42, clamp(skinContourDensity, 0.0, 1.0));
 
@@ -256,7 +272,7 @@ void main() {
 
   vAlpha =
     clamp(
-      skinOpacity * depthOpacityMul * normalOpacity * mix(1.0, contourAmp * 1.06, contourGlow * clamp(skinContourDensity, 0.0, 1.0)),
+      skinOpacity * depthOpacityMul * normalOpacity * finalOpacityMult * mix(1.0, contourAmp * 1.06, contourGlow * clamp(skinContourDensity, 0.0, 1.0)),
       0.0,
       1.0);
 
