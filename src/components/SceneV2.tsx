@@ -496,8 +496,12 @@ export default function SceneV2(props: ISceneV2Props) {
   });
   /** Max distance from waveOrigin to any primary particle's home position. */
   const waveMaxDistRef = useRef<number>(1.5);
-  /** Current wave radius for Beat 4 monotonic reveal; reset to 0 each time Beat 4 begins. */
+  /** Current wave Y position for Beat 4 Y-plane sweep; starts at maxHomeY, sweeps to minHomeY. */
   const waveRadiusBeat4Ref = useRef<number>(0);
+  /** Min homeY among primary particles — lower bound of Beat 4 Y-plane sweep. */
+  const waveMinYRef = useRef<number>(-1.5);
+  /** Max homeY among primary particles — upper bound (start) of Beat 4 Y-plane sweep. */
+  const waveMaxYRef = useRef<number>(1.5);
 
   // ── Particle simulation state ─────────────────────────────────────────────
 
@@ -688,6 +692,9 @@ export default function SceneV2(props: ISceneV2Props) {
       if (particles[i].homeY > maxY) maxY = particles[i].homeY;
       if (particles[i].homeY < minY) minY = particles[i].homeY;
     }
+    // Store Y bounds for Beat 4 Y-plane sweep
+    waveMinYRef.current = minY;
+    waveMaxYRef.current = maxY;
     const threshold = minY + (maxY - minY) * 0.8;
     let cx = 0,
       cy = 0,
@@ -1121,11 +1128,10 @@ export default function SceneV2(props: ISceneV2Props) {
       beat4EntryRotYRef.current = shapeRotationRef.current;
       beat4EntryRotXRef.current = shapeRotationXRef.current;
       lastRevealStageRef.current = -1;
-      // Start the wave near-zero so no particles solidify on frame 1 (avoids the
-      // visible burst caused by hundreds of particles simultaneously switching to
-      // home targets). The wave expands quickly enough to catch any hint particles
-      // that were already near the figure in Beat 3.
-      waveRadiusBeat4Ref.current = waveMaxDistRef.current * 0.02;
+      // Start the Y-sweep just above the topmost particle so no particles solidify
+      // on frame 1. The wave sweeps downward from maxHomeY to minHomeY.
+      const yRange4Init = waveMaxYRef.current - waveMinYRef.current;
+      waveRadiusBeat4Ref.current = waveMaxYRef.current + yRange4Init * 0.02;
     }
 
     transitionRef.current = {
@@ -1575,17 +1581,20 @@ export default function SceneV2(props: ISceneV2Props) {
 
       if (beat4StartTimeRef.current < 0) beat4StartTimeRef.current = elapsed;
 
-      // Advance wave radius so it covers waveMaxDist in exactly beatDuration seconds.
-      const waveRate =
-        waveMaxDistRef.current / Math.max(beatDurationRef.current, 1);
-      waveRadiusBeat4Ref.current += waveRate * dt;
-      const waveRadius4 = waveRadiusBeat4Ref.current;
-      const waveMaxDist4 = waveMaxDistRef.current;
-      const waveWidth4 = Math.max(0.2, waveMaxDist4 * 0.2);
-
-      const waveOX4 = waveOriginRef.current.x;
-      const waveOY4 = waveOriginRef.current.y;
-      const waveOZ4 = waveOriginRef.current.z;
+      // Y-plane sweep: waveRadiusBeat4Ref holds the current sweep Y position.
+      // It starts just above maxHomeY and decreases to minHomeY, revealing
+      // particles top-first like a curtain dropping from the top of the figure.
+      const waveYRange4 = Math.max(
+        waveMaxYRef.current - waveMinYRef.current,
+        0.1,
+      );
+      const waveRate4 =
+        (waveYRange4 * waveSpeedRef.current) /
+        Math.max(beatDurationRef.current, 1);
+      waveRadiusBeat4Ref.current -= waveRate4 * dt;
+      const waveY4 = waveRadiusBeat4Ref.current;
+      // Blend zone in Y units — particles near the sweep plane interpolate
+      const waveWidthY4 = Math.max(0.15, waveYRange4 * 0.18);
 
       const sortedTargets4 =
         sortedCubeTargetsRef.current.length > 0
@@ -1593,8 +1602,11 @@ export default function SceneV2(props: ISceneV2Props) {
           : cubeTargetsRef.current;
 
       const numStages4 = revealStagesRef.current;
-      // Map wave progress (0→1 at maxDist) to stage index for debris scatter
-      const waveProgress4 = waveRadius4 / Math.max(waveMaxDist4, 0.001);
+      // Wave progress 0→1 as sweep moves from maxHomeY down to minHomeY
+      const waveProgress4 = Math.max(
+        0,
+        (waveMaxYRef.current - waveY4) / waveYRange4,
+      );
       const currentStage4 = Math.min(
         Math.floor(waveProgress4 * numStages4),
         numStages4 - 1,
@@ -1616,8 +1628,6 @@ export default function SceneV2(props: ISceneV2Props) {
 
       // The cube is held at the rotation angle captured at Beat 4 entry so it
       // starts exactly where Hint left off — no flip at the beat boundary.
-      // Beat 3's deceleration ensures the cube is nearly stationary by the time
-      // Beat 4 begins, so the frozen angle reads as a smooth continuation.
       const cosY4 = Math.cos(beat4EntryRotYRef.current);
       const sinY4 = Math.sin(beat4EntryRotYRef.current);
       const cosX4 = Math.cos(beat4EntryRotXRef.current);
@@ -1631,15 +1641,8 @@ export default function SceneV2(props: ISceneV2Props) {
         const p = particles[i];
         const phase = i * 0.37;
 
-        const ddx4 = p.homeX - waveOX4;
-        const ddy4 = p.homeY - waveOY4;
-        const ddz4 = p.homeZ - waveOZ4;
-        const distFromOrigin4 = Math.sqrt(
-          ddx4 * ddx4 + ddy4 * ddy4 + ddz4 * ddz4,
-        );
-
-        if (distFromOrigin4 < waveRadius4 - waveWidth4) {
-          // Solidified: permanently at figure surface with gentle jitter
+        if (p.homeY >= waveY4 + waveWidthY4) {
+          // Solidified: above the wave front, permanently at figure surface
           p.targetX = p.homeX + Math.sin(tOscFig4 + phase) * figJitter4;
           p.targetY = p.homeY + Math.cos(tOscFig4 * 0.7 + phase) * figJitter4;
           p.targetZ =
@@ -1659,8 +1662,9 @@ export default function SceneV2(props: ISceneV2Props) {
           const cubeY4 = cosX4 * ry4 - sinX4 * rz4;
           const cubeZ4 = sinX4 * ry4 + cosX4 * rz4;
 
-          const waveEdge4 = waveRadius4 - distFromOrigin4;
-          const rawFrac4 = Math.max(0, Math.min(1, waveEdge4 / waveWidth4));
+          // waveEdgeY4 > 0 means particle Y is above the sweep plane (being revealed)
+          const waveEdgeY4 = p.homeY - waveY4;
+          const rawFrac4 = Math.max(0, Math.min(1, waveEdgeY4 / waveWidthY4));
           const t4 = rawFrac4 * rawFrac4 * (3 - 2 * rawFrac4); // smoothstep
           p.targetX = cubeX4 * (1 - t4) + p.homeX * t4;
           p.targetY = cubeY4 * (1 - t4) + p.homeY * t4;
