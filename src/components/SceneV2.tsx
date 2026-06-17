@@ -1,5 +1,5 @@
 import { OrbitControls } from "@react-three/drei";
-import { useFrame } from "@react-three/fiber";
+import { useFrame, useThree } from "@react-three/fiber";
 
 import { useEffect, useMemo, useRef, useState } from "react";
 
@@ -43,6 +43,9 @@ import type { BufferGeometry, Group } from "three";
 // ── Transition constants ───────────────────────────────────────────────────────
 
 const TRANSITION_DURATION = 0.5; // seconds
+
+/** Auto-rotation speed for Beat 5 figure spin: one full revolution in ~17 seconds. */
+const AUTO_ROT_SPEED = (2 * Math.PI) / 17;
 
 // ── Camera targets per beat ────────────────────────────────────────────────────
 
@@ -612,6 +615,19 @@ export default function SceneV2(props: ISceneV2Props) {
   /** Ref to the OrbitControls instance — used to sync target on first orbit-enable frame. */
   const orbitControlsRef = useRef<ThreeOrbitControls | null>(null);
 
+  // ── Beat 5 approved rotation state ─────────────────────────────────────────
+
+  /** Accumulated Y-rotation offset for the Beat 5 figure auto/drag spin (radians). */
+  const approvedRotYRef = useRef(0);
+  /** True while the user is actively dragging to spin the figure in Beat 5. */
+  const isDraggingApprovedRef = useRef(false);
+  /** Canvas X position when the current drag started. */
+  const dragStartXRef = useRef(0);
+  /** approvedRotYRef value at the start of the current drag. */
+  const dragStartRotYRef = useRef(0);
+  /** Clock time when Beat 5 began (for settle delay). Reset to -1 when not in Beat 5. */
+  const beat5StartTimeRef = useRef(-1);
+
   // ── Particle scatter-reset (exposed to parent via onReset prop) ───────────
 
   // resetRef.current is kept up-to-date every render so the stable wrapper
@@ -1173,6 +1189,43 @@ export default function SceneV2(props: ISceneV2Props) {
     orbitControlsRef.current.target.set(0, 0.2, 0);
   }, [orbitEnabled]);
 
+  // ── Beat 5 drag-to-rotate: pointer events on the canvas ──────────────────
+
+  const { gl } = useThree();
+
+  useEffect(() => {
+    const canvas = gl.domElement;
+
+    const onPointerDown = (e: PointerEvent) => {
+      if (beatRef.current !== 5) return;
+      isDraggingApprovedRef.current = true;
+      dragStartXRef.current = e.clientX;
+      dragStartRotYRef.current = approvedRotYRef.current;
+    };
+
+    const onPointerMove = (e: PointerEvent) => {
+      if (!isDraggingApprovedRef.current) return;
+      approvedRotYRef.current =
+        dragStartRotYRef.current + (e.clientX - dragStartXRef.current) * 0.01;
+    };
+
+    const onPointerUp = () => {
+      isDraggingApprovedRef.current = false;
+    };
+
+    canvas.addEventListener("pointerdown", onPointerDown);
+    canvas.addEventListener("pointermove", onPointerMove);
+    canvas.addEventListener("pointerup", onPointerUp);
+    canvas.addEventListener("pointercancel", onPointerUp);
+
+    return () => {
+      canvas.removeEventListener("pointerdown", onPointerDown);
+      canvas.removeEventListener("pointermove", onPointerMove);
+      canvas.removeEventListener("pointerup", onPointerUp);
+      canvas.removeEventListener("pointercancel", onPointerUp);
+    };
+  }, [gl]);
+
   // ── Per-frame simulation ──────────────────────────────────────────────────
 
   useFrame((state, delta) => {
@@ -1188,6 +1241,24 @@ export default function SceneV2(props: ISceneV2Props) {
     const skinSizeTarget = currentBeat === 4 || currentBeat === 5 ? 0.8 : 1.0;
     skinSizeMultiplierRef.current +=
       (skinSizeTarget - skinSizeMultiplierRef.current) * 0.02;
+
+    // ── Beat 5 auto-rotation: advance approved Y angle, compute trig ─────────
+    // Starts after a 2.5 s settle delay; eases in over 1 s.
+    // Resets to zero whenever we leave Beat 5.
+    if (currentBeat === 5) {
+      if (beat5StartTimeRef.current < 0) beat5StartTimeRef.current = elapsed;
+      const beat5Elapsed = elapsed - beat5StartTimeRef.current;
+      if (!isDraggingApprovedRef.current && beat5Elapsed > 2.5) {
+        const rampT = Math.min(1, (beat5Elapsed - 2.5) / 1.0);
+        approvedRotYRef.current += AUTO_ROT_SPEED * dt * (rampT * rampT);
+      }
+    } else {
+      approvedRotYRef.current = 0;
+      isDraggingApprovedRef.current = false;
+      beat5StartTimeRef.current = -1;
+    }
+    const cosApproved = Math.cos(approvedRotYRef.current);
+    const sinApproved = Math.sin(approvedRotYRef.current);
 
     // Advance transition
     const trans = transitionRef.current;
@@ -1273,9 +1344,11 @@ export default function SceneV2(props: ISceneV2Props) {
           p.targetY = Math.sin(bs.orbitAngle * 0.3) * 0.4;
           p.targetZ = Math.sin(bs.orbitAngle) * bs.orbitRadius;
         } else {
-          p.targetX = p.homeX;
+          // Rotate home position around Y by the approved spin angle so surface
+          // particles on the figure track the figure as it spins.
+          p.targetX = p.homeX * cosApproved + p.homeZ * sinApproved;
           p.targetY = p.homeY;
-          p.targetZ = p.homeZ;
+          p.targetZ = -p.homeX * sinApproved + p.homeZ * cosApproved;
         }
       }
     } else {
@@ -1770,20 +1843,21 @@ export default function SceneV2(props: ISceneV2Props) {
           }
           for (let i = 0; i < primaryCount; i++) {
             const p = particles[i];
-            const hx = p.homeX,
-              hy = p.homeY,
-              hz = p.homeZ;
-            const homeLen = Math.sqrt(hx * hx + hy * hy + hz * hz);
+            // Rotate home position around Y so shimmer tracks the spinning figure.
+            const rhX = p.homeX * cosApproved + p.homeZ * sinApproved;
+            const rhY = p.homeY;
+            const rhZ = -p.homeX * sinApproved + p.homeZ * cosApproved;
+            const homeLen = Math.sqrt(rhX * rhX + rhY * rhY + rhZ * rhZ);
             if (homeLen > 1e-6) {
               const invLen = 1 / homeLen;
               const off = shimmerOffs[i];
-              p.targetX = hx + hx * invLen * off;
-              p.targetY = hy + hy * invLen * off;
-              p.targetZ = hz + hz * invLen * off;
+              p.targetX = rhX + rhX * invLen * off;
+              p.targetY = rhY + rhY * invLen * off;
+              p.targetZ = rhZ + rhZ * invLen * off;
             } else {
-              p.targetX = hx;
-              p.targetY = hy;
-              p.targetZ = hz;
+              p.targetX = rhX;
+              p.targetY = rhY;
+              p.targetZ = rhZ;
             }
           }
         } else if (motion === "breathe") {
@@ -1791,48 +1865,50 @@ export default function SceneV2(props: ISceneV2Props) {
           const breatheOffset = Math.sin(elapsed * 0.8) * 0.04;
           for (let i = 0; i < primaryCount; i++) {
             const p = particles[i];
-            const hx = p.homeX,
-              hy = p.homeY,
-              hz = p.homeZ;
-            const homeLen = Math.sqrt(hx * hx + hy * hy + hz * hz);
+            // Rotate home position around Y so breathe tracks the spinning figure.
+            const rhX = p.homeX * cosApproved + p.homeZ * sinApproved;
+            const rhY = p.homeY;
+            const rhZ = -p.homeX * sinApproved + p.homeZ * cosApproved;
+            const homeLen = Math.sqrt(rhX * rhX + rhY * rhY + rhZ * rhZ);
             if (homeLen > 1e-6) {
               const invLen = 1 / homeLen;
-              p.targetX = hx + hx * invLen * breatheOffset;
-              p.targetY = hy + hy * invLen * breatheOffset;
-              p.targetZ = hz + hz * invLen * breatheOffset;
+              p.targetX = rhX + rhX * invLen * breatheOffset;
+              p.targetY = rhY + rhY * invLen * breatheOffset;
+              p.targetZ = rhZ + rhZ * invLen * breatheOffset;
             } else {
-              p.targetX = hx;
-              p.targetY = hy;
-              p.targetZ = hz;
+              p.targetX = rhX;
+              p.targetY = rhY;
+              p.targetZ = rhZ;
             }
           }
         } else if (motion === "flow") {
           // Each particle has its own independent per-particle noise phase offset
           for (let i = 0; i < primaryCount; i++) {
             const p = particles[i];
-            const hx = p.homeX,
-              hy = p.homeY,
-              hz = p.homeZ;
-            const homeLen = Math.sqrt(hx * hx + hy * hy + hz * hz);
+            // Rotate home position around Y so flow tracks the spinning figure.
+            const rhX = p.homeX * cosApproved + p.homeZ * sinApproved;
+            const rhY = p.homeY;
+            const rhZ = -p.homeX * sinApproved + p.homeZ * cosApproved;
+            const homeLen = Math.sqrt(rhX * rhX + rhY * rhY + rhZ * rhZ);
             if (homeLen > 1e-6) {
               const invLen = 1 / homeLen;
               const flowOffset = Math.sin(elapsed * 0.6 + i * 0.37) * 0.025;
-              p.targetX = hx + hx * invLen * flowOffset;
-              p.targetY = hy + hy * invLen * flowOffset;
-              p.targetZ = hz + hz * invLen * flowOffset;
+              p.targetX = rhX + rhX * invLen * flowOffset;
+              p.targetY = rhY + rhY * invLen * flowOffset;
+              p.targetZ = rhZ + rhZ * invLen * flowOffset;
             } else {
-              p.targetX = p.homeX;
-              p.targetY = p.homeY;
-              p.targetZ = p.homeZ;
+              p.targetX = rhX;
+              p.targetY = rhY;
+              p.targetZ = rhZ;
             }
           }
         } else {
-          // still: no offset, particles rest exactly on surface
+          // still: no offset, particles rest exactly on surface (rotated with figure)
           for (let i = 0; i < primaryCount; i++) {
             const p = particles[i];
-            p.targetX = p.homeX;
+            p.targetX = p.homeX * cosApproved + p.homeZ * sinApproved;
             p.targetY = p.homeY;
-            p.targetZ = p.homeZ;
+            p.targetZ = -p.homeX * sinApproved + p.homeZ * cosApproved;
           }
         }
 
@@ -2064,7 +2140,10 @@ export default function SceneV2(props: ISceneV2Props) {
         y: 0.01,
         z: -0.19,
       };
-      figureGroupRef.current.rotation.set(rot.x, rot.y, rot.z);
+      // In Beat 5, add the approved spin offset so the skin mesh co-rotates with
+      // the swarm particle cloud.
+      const addRotY = currentBeat === 5 ? approvedRotYRef.current : 0;
+      figureGroupRef.current.rotation.set(rot.x, rot.y + addRotY, rot.z);
       figureGroupRef.current.scale.setScalar(figureScaleRef.current ?? 1.0);
       // Shift the skin mesh group by the negative centroid so it aligns with
       // the centroid-adjusted swarm particle cloud (homeX/Y/Z are centered at
@@ -2145,7 +2224,7 @@ export default function SceneV2(props: ISceneV2Props) {
         enabled={orbitEnabled}
         enablePan={false}
         enableZoom={true}
-        enableRotate={true}
+        enableRotate={beat !== 5}
       />
 
       <ambientLight intensity={0.4} />
