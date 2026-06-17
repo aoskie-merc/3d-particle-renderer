@@ -389,7 +389,7 @@ export default function AppV2() {
   const beatsWrapRef = useRef<HTMLDivElement>(null);
   const controlsWrapRef = useRef<HTMLDivElement>(null);
   const [openSections, setOpenSections] = useState<Set<TSection>>(
-    new Set<TSection>(["Playback", "Particles"]),
+    new Set<TSection>(),
   );
 
   // ── Figure orientation state ──────────────────────────────────────────────
@@ -1582,13 +1582,13 @@ export default function AppV2() {
             )}
           </div>
 
-          {/* Figure Orientation */}
+          {/* Figure */}
           <div className={styles.accordionSection}>
             <button
               className={styles.accordionHeader}
               onClick={() => setDebugSectionOpen((o) => !o)}
             >
-              <span>Figure Orientation</span>
+              <span>Figure</span>
               <span
                 className={
                   debugSectionOpen ? styles.chevronOpen : styles.chevron
@@ -1612,6 +1612,69 @@ export default function AppV2() {
                       </button>
                     ))}
                   </div>
+                </div>
+                <div className={styles.controlRow}>
+                  <label className={styles.controlLabel}>
+                    <span>Rotate X</span>
+                    <EditableSliderValue
+                      displayValue={debugRotX.toFixed(2)}
+                      inputDefault={debugRotX}
+                      onCommit={setDebugRotX}
+                      min={-3.14}
+                      max={3.14}
+                    />
+                  </label>
+                  <input
+                    className={styles.slider}
+                    type="range"
+                    min={-3.14}
+                    max={3.14}
+                    step={0.05}
+                    value={debugRotX}
+                    onChange={(e) => setDebugRotX(parseFloat(e.target.value))}
+                  />
+                </div>
+                <div className={styles.controlRow}>
+                  <label className={styles.controlLabel}>
+                    <span>Rotate Y</span>
+                    <EditableSliderValue
+                      displayValue={debugRotY.toFixed(2)}
+                      inputDefault={debugRotY}
+                      onCommit={setDebugRotY}
+                      min={-3.14}
+                      max={3.14}
+                    />
+                  </label>
+                  <input
+                    className={styles.slider}
+                    type="range"
+                    min={-3.14}
+                    max={3.14}
+                    step={0.05}
+                    value={debugRotY}
+                    onChange={(e) => setDebugRotY(parseFloat(e.target.value))}
+                  />
+                </div>
+                <div className={styles.controlRow}>
+                  <label className={styles.controlLabel}>
+                    <span>Rotate Z</span>
+                    <EditableSliderValue
+                      displayValue={debugRotZ.toFixed(2)}
+                      inputDefault={debugRotZ}
+                      onCommit={setDebugRotZ}
+                      min={-3.14}
+                      max={3.14}
+                    />
+                  </label>
+                  <input
+                    className={styles.slider}
+                    type="range"
+                    min={-3.14}
+                    max={3.14}
+                    step={0.05}
+                    value={debugRotZ}
+                    onChange={(e) => setDebugRotZ(parseFloat(e.target.value))}
+                  />
                 </div>
                 <div className={styles.controlRow}>
                   <label className={styles.controlLabel}>
