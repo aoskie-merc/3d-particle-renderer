@@ -1212,8 +1212,26 @@ export default function SceneV2(props: ISceneV2Props) {
     if (currentBeat === 2) {
       // ── Beat 2: rotating geometric shape + jitter + orbiting particles ───
 
-      shapeRotationRef.current += 0.003 * dt * 60;
-      shapeRotationXRef.current += 0.001 * dt * 60;
+      if (beat2StartTimeRef.current < 0) beat2StartTimeRef.current = elapsed;
+      const beat2Elapsed = elapsed - beat2StartTimeRef.current;
+      const beat2Progress = Math.min(
+        1,
+        beat2Elapsed / Math.max(beatDurationRef.current, 1),
+      );
+
+      const rotYSpeed2 = 0.003 * dt * 60;
+      const rotXSpeed2 = 0.001 * dt * 60;
+
+      if (beat2Progress > 0.75) {
+        // Final 25%: reduce speed by up to 50% so Beat 3 starts from a predictable angle
+        const settleT2 = (beat2Progress - 0.75) / 0.25;
+        const settleSmooth2 = settleT2 * settleT2 * (3 - 2 * settleT2);
+        shapeRotationRef.current += rotYSpeed2 * (1 - settleSmooth2 * 0.5);
+        shapeRotationXRef.current += rotXSpeed2 * (1 - settleSmooth2 * 0.5);
+      } else {
+        shapeRotationRef.current += rotYSpeed2;
+        shapeRotationXRef.current += rotXSpeed2;
+      }
 
       const cosY = Math.cos(shapeRotationRef.current);
       const sinY = Math.sin(shapeRotationRef.current);
@@ -1349,9 +1367,37 @@ export default function SceneV2(props: ISceneV2Props) {
       const beat3Elapsed = elapsed - beat3StartTimeRef.current;
       hintPhaseRef.current = beat3Elapsed;
 
-      // Cube continues to rotate (same as Beat 2)
-      shapeRotationRef.current += 0.003 * dt * 60;
-      shapeRotationXRef.current += 0.001 * dt * 60;
+      const beat3Progress = Math.min(
+        1,
+        beat3Elapsed / Math.max(beatDurationRef.current, 1),
+      );
+
+      const rotYSpeed3 = 0.003 * dt * 60;
+      const rotXSpeed3 = 0.001 * dt * 60;
+
+      // Cube continues to rotate; in final 25% steer toward nearest clean angle (2π multiple)
+      // so Beat 4 starts with rotation ≈ 0 without the cube appearing to stop.
+      if (beat3Progress > 0.75) {
+        const settleT3 = (beat3Progress - 0.75) / 0.25;
+        const settleSmooth3 = settleT3 * settleT3 * (3 - 2 * settleT3);
+
+        // Maintain momentum but taper increment by up to 50%
+        shapeRotationRef.current += rotYSpeed3 * (1 - settleSmooth3 * 0.5);
+        shapeRotationXRef.current += rotXSpeed3 * (1 - settleSmooth3 * 0.5);
+
+        // Steer toward nearest multiple of 2π (feels like a natural full-rotation landing)
+        const nearestTargetY =
+          Math.round(shapeRotationRef.current / (Math.PI * 2)) * Math.PI * 2;
+        const nearestTargetX =
+          Math.round(shapeRotationXRef.current / (Math.PI * 2)) * Math.PI * 2;
+        shapeRotationRef.current +=
+          (nearestTargetY - shapeRotationRef.current) * settleSmooth3 * 0.08;
+        shapeRotationXRef.current +=
+          (nearestTargetX - shapeRotationXRef.current) * settleSmooth3 * 0.08;
+      } else {
+        shapeRotationRef.current += rotYSpeed3;
+        shapeRotationXRef.current += rotXSpeed3;
+      }
       const cosY3 = Math.cos(shapeRotationRef.current);
       const sinY3 = Math.sin(shapeRotationRef.current);
       const cosX3 = Math.cos(shapeRotationXRef.current);
@@ -1517,7 +1563,7 @@ export default function SceneV2(props: ISceneV2Props) {
       }
 
       const beat4Elapsed = elapsed - beat4StartTimeRef.current;
-      const warmupDuration4 = 2.0;
+      const warmupDuration4 = 1.0;
 
       // How much to blend toward entry positions (1.0 at start → 0.0 at warmupDuration4).
       // Ensures particles flow from wherever they were in Beat 3 rather than jumping.
