@@ -670,26 +670,6 @@
   margin: 6px 0 0;
 }
 
-.ctaButton {
-  display: block;
-  margin: 20px auto 0;
-  background: #5b6ae8;
-  color: #ffffff;
-  border: none;
-  border-radius: 999px;
-  padding: 12px 24px;
-  font-family: var(--ds-font-family-text, var(--v2-font-text));
-  font-size: var(--ds-text-body-default);
-  font-weight: 480;
-  cursor: pointer;
-  transition: opacity 150ms ease;
-  pointer-events: auto;
-}
-
-.ctaButton:hover {
-  opacity: 0.88;
-}
-
 /* ── User name (top-right) ─────────────────────────────────────────────────── */
 
 .userName {

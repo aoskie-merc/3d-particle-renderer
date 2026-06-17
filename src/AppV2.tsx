@@ -26,7 +26,6 @@ import {
 interface IOverlayContent {
   headline: string;
   subtext: string;
-  showCta?: boolean;
 }
 
 function getOverlayContent(
@@ -64,7 +63,6 @@ function getOverlayContent(
       return {
         headline: "Welcome to Mercury",
         subtext: "We're better because you're here",
-        showCta: true,
       };
   }
 }
@@ -399,9 +397,9 @@ export default function AppV2() {
   const [debugRotY, setDebugRotY] = useState(0.01);
   const [debugRotZ, setDebugRotZ] = useState(-0.19);
   const [figureScale, setFigureScale] = useState(1.66);
-  const [figurePosX, setFigurePosX] = useState(-0.10);
-  const [figurePosY, setFigurePosY] = useState(0.40);
-  const [figurePosZ, setFigurePosZ] = useState(0.00);
+  const [figurePosX, setFigurePosX] = useState(-0.1);
+  const [figurePosY, setFigurePosY] = useState(0.4);
+  const [figurePosZ, setFigurePosZ] = useState(0.0);
 
   // ── Text overlay state ────────────────────────────────────────────────────
   const [displayedOverlay, setDisplayedOverlay] = useState<IOverlayContent>(
@@ -815,14 +813,6 @@ export default function AppV2() {
               {displayedOverlay.headline}
             </p>
             <p className={styles.overlaySubtext}>{displayedOverlay.subtext}</p>
-            {displayedOverlay.showCta && (
-              <button
-                className={styles.ctaButton}
-                onClick={() => console.log("Set up account clicked")}
-              >
-                Set up account
-              </button>
-            )}
           </div>
         </div>
       )}
