@@ -643,12 +643,6 @@ export default function SceneV2(props: ISceneV2Props) {
   const dragStartRotYRef = useRef(0);
   /** Clock time when Beat 5 began (for settle delay). Reset to -1 when not in Beat 5. */
   const beat5StartTimeRef = useRef(-1);
-  /** Canvas Y position when the current drag started (for X-tilt). */
-  const dragStartYRef = useRef(0);
-  /** Current X-tilt offset (radians); lerps toward approvedRotXTargetRef each frame. */
-  const approvedRotXRef = useRef(0);
-  /** Target X-tilt offset (radians); tracks drag while active, snaps to 0 on release. */
-  const approvedRotXTargetRef = useRef(0);
 
   // ── Particle scatter-reset (exposed to parent via onReset prop) ───────────
 
@@ -1222,7 +1216,6 @@ export default function SceneV2(props: ISceneV2Props) {
       if (beatRef.current !== 5) return;
       isDraggingApprovedRef.current = true;
       dragStartXRef.current = e.clientX;
-      dragStartYRef.current = e.clientY;
       dragStartRotYRef.current = approvedRotYRef.current;
     };
 
@@ -1230,16 +1223,10 @@ export default function SceneV2(props: ISceneV2Props) {
       if (!isDraggingApprovedRef.current) return;
       approvedRotYRef.current =
         dragStartRotYRef.current + (e.clientX - dragStartXRef.current) * 0.01;
-      const MAX_TILT = Math.PI / 4;
-      approvedRotXTargetRef.current = Math.max(
-        -MAX_TILT,
-        Math.min(MAX_TILT, (e.clientY - dragStartYRef.current) * 0.01),
-      );
     };
 
     const onPointerUp = () => {
       isDraggingApprovedRef.current = false;
-      approvedRotXTargetRef.current = 0;
     };
 
     canvas.addEventListener("pointerdown", onPointerDown);
@@ -1291,15 +1278,9 @@ export default function SceneV2(props: ISceneV2Props) {
       }
     } else {
       approvedRotYRef.current = 0;
-      approvedRotXRef.current = 0;
-      approvedRotXTargetRef.current = 0;
       isDraggingApprovedRef.current = false;
       beat5StartTimeRef.current = -1;
     }
-    // Lerp X tilt toward target each frame (~1 s settling time at delta * 4)
-    approvedRotXRef.current +=
-      (approvedRotXTargetRef.current - approvedRotXRef.current) *
-      Math.min(1, delta * 4);
 
     // Beat 5: compute the quaternion delta once per frame so all particle sites
     // (orbit non-breakaway, shimmer, breathe, flow, still) share the same exact
@@ -1312,7 +1293,7 @@ export default function SceneV2(props: ISceneV2Props) {
       };
       _beat5EulerBase.set(baseRot.x, baseRot.y, baseRot.z, "XYZ");
       _beat5EulerNew.set(
-        baseRot.x + approvedRotXRef.current,
+        baseRot.x,
         baseRot.y + approvedRotYRef.current,
         baseRot.z,
         "XYZ",
@@ -1397,18 +1378,20 @@ export default function SceneV2(props: ISceneV2Props) {
         }
       }
 
-      // Set targets based on breakaway state
+      // Set targets based on breakaway state.
+      // During drag, all orbit particles lock to their rotated home position so
+      // the entire figure is perfectly rigid — no lagging breakaway particles.
+      const isDragging5 = isDraggingApprovedRef.current;
       for (let i = primaryCount; i < n; i++) {
         const p = particles[i];
         const bi = i - primaryCount;
         const bs = bi < breakaways.length ? breakaways[bi] : null;
-        if (bs?.active) {
+        if (bs?.active && !isDragging5) {
           p.targetX = Math.cos(bs.orbitAngle) * bs.orbitRadius;
           p.targetY = Math.sin(bs.orbitAngle * 0.3) * 0.4;
           p.targetZ = Math.sin(bs.orbitAngle) * bs.orbitRadius;
         } else {
-          // Quaternion delta: rotates home position from base pose to current pose,
-          // matching the exact XYZ Euler rotation applied to figureGroupRef.
+          // Non-active OR dragging: quaternion delta rotates home → current pose.
           // Subtract pivot before rotating and add back after so the figure
           // rotates around its centroid (posOffset), not the world origin.
           _beat5Vec.set(
@@ -2191,20 +2174,24 @@ export default function SceneV2(props: ISceneV2Props) {
       const orbitAlphaElse = (1 - Math.exp(-0.3 * dt)) * 0.05;
       if (currentBeat === 5) {
         const breakaways = breakawayRef.current;
+        const isDraggingOrbit = isDraggingApprovedRef.current;
         for (let i = primaryCount; i < n; i++) {
           const p = particles[i];
           const bi = i - primaryCount;
           const isActive = bi < breakaways.length && breakaways[bi].active;
-          if (isActive) {
-            // Actively orbiting: smooth lerp for graceful orbital arc
+          if (isActive && !isDraggingOrbit) {
+            // Actively orbiting (non-drag only): smooth lerp for graceful orbital arc
             p.x += (p.targetX - p.x) * orbitAlphaElse;
             p.y += (p.targetY - p.y) * orbitAlphaElse;
             p.z += (p.targetZ - p.z) * orbitAlphaElse;
           } else {
-            // Surface-sitting: snap directly to rotated surface target, fully rigid
+            // Surface-sitting, OR dragging: snap directly to rotated surface target
             p.x = p.targetX;
             p.y = p.targetY;
             p.z = p.targetZ;
+            p.vx = 0;
+            p.vy = 0;
+            p.vz = 0;
           }
         }
       } else {
@@ -2245,12 +2232,7 @@ export default function SceneV2(props: ISceneV2Props) {
       // In Beat 5, add the approved spin/tilt offsets so the skin mesh co-rotates
       // with the swarm particle cloud.
       const addRotY = currentBeat === 5 ? approvedRotYRef.current : 0;
-      const addRotX = currentBeat === 5 ? approvedRotXRef.current : 0;
-      figureGroupRef.current.rotation.set(
-        rot.x + addRotX,
-        rot.y + addRotY,
-        rot.z,
-      );
+      figureGroupRef.current.rotation.set(rot.x, rot.y + addRotY, rot.z);
       figureGroupRef.current.scale.setScalar(figureScaleRef.current ?? 1.0);
       // Shift the skin mesh group by the negative centroid so it aligns with
       // the centroid-adjusted swarm particle cloud (homeX/Y/Z are centered at
