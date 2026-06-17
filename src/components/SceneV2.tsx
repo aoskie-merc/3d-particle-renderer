@@ -1464,22 +1464,16 @@ export default function SceneV2(props: ISceneV2Props) {
       const rotYSpeed3 = 0.00225 * dt * 60;
       const rotXSpeed3 = 0.00075 * dt * 60;
 
-      // In the final 15% of Beat 3, decelerate to near-zero speed and steer
-      // Y rotation toward the nearest π/2 so the cube enters Beat 4 face-on
-      // and nearly stationary.
-      const BEAT3_DECEL_START = 0.85;
+      // Decelerate rotation over the second half of Beat 3 (50%→100%), ramping
+      // speed from 1→0 so the cube arrives at Beat 4 already stationary with no
+      // visible snap or steering nudge.
+      const BEAT3_DECEL_START = 0.5;
       const rotDeltaScale =
         beat3Progress >= BEAT3_DECEL_START
           ? 1 - (beat3Progress - BEAT3_DECEL_START) / (1 - BEAT3_DECEL_START)
           : 1;
       shapeRotationRef.current += rotYSpeed3 * rotDeltaScale;
       shapeRotationXRef.current += rotXSpeed3 * rotDeltaScale;
-      if (beat3Progress >= BEAT3_DECEL_START) {
-        const nearestFaceAngle =
-          Math.round(shapeRotationRef.current / (Math.PI / 2)) * (Math.PI / 2);
-        shapeRotationRef.current +=
-          (nearestFaceAngle - shapeRotationRef.current) * 0.03;
-      }
       const cosY3 = Math.cos(shapeRotationRef.current);
       const sinY3 = Math.sin(shapeRotationRef.current);
       const cosX3 = Math.cos(shapeRotationXRef.current);
