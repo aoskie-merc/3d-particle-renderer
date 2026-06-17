@@ -542,19 +542,6 @@ export default function SceneV2(props: ISceneV2Props) {
 
   const shapeRotationRef = useRef(0);
   const shapeRotationXRef = useRef(0);
-  /** Z-axis rotation accumulated during Beat 4 Reveal; reset to 0 at Beat 4 entry. */
-  const shapeRotationZRef = useRef(0);
-  /** Cube rotation Y-angle at the moment Beat 4 begins — used to smoothly wind down to 0. */
-  const beat4EntryRotYRef = useRef(0);
-  /** Cube rotation X-angle at the moment Beat 4 begins — used to smoothly wind down to 0. */
-  const beat4EntryRotXRef = useRef(0);
-  /**
-   * Particle positions (x/y/z) captured at the moment Beat 4 begins.
-   * Used to blend targets from entry positions toward wave-based targets over
-   * warmupDuration4 seconds so particles never jump (collapse through center).
-   * Flat Float32Array: [x0,y0,z0, x1,y1,z1, ...] for primaryCount particles.
-   */
-  const beat4EntryPosRef = useRef<Float32Array>(new Float32Array(0));
   // ── Beat 1 pre-pull state ─────────────────────────────────────────────────
 
   const beat1StartTimeRef = useRef(-1);
@@ -1114,11 +1101,6 @@ export default function SceneV2(props: ISceneV2Props) {
 
     // Reset Beat 4 staged reveal state; reset wave radius for new reveal pass
     if (beat === 4) {
-      // Snapshot Beat 3's cube rotation so Beat 4 can smoothly unwind it to 0
-      // instead of jumping to the unrotated cube targets and causing a rush/collapse.
-      beat4EntryRotYRef.current = shapeRotationRef.current;
-      beat4EntryRotXRef.current = shapeRotationXRef.current;
-      shapeRotationZRef.current = 0; // Z rotation starts fresh at Beat 4 entry
       beat4StartTimeRef.current = -1; // reset; initialized on first useFrame tick
       revealStageRef.current = 0;
       lastRevealStageRef.current = -1;
@@ -1127,17 +1109,6 @@ export default function SceneV2(props: ISceneV2Props) {
       // home targets). The wave expands quickly enough to catch any hint particles
       // that were already near the figure in Beat 3.
       waveRadiusBeat4Ref.current = waveMaxDistRef.current * 0.02;
-      // Capture current positions so Beat 4 targets blend from here — not from the
-      // unrotated cube targets — during the warmup window. This prevents the collapse
-      // (particles rushing through the center) that occurs when Beat 3's rotated cube
-      // positions are suddenly replaced by Beat 4's unrotated figure targets.
-      const entryPosBuf = new Float32Array(primaryCtForDampen * 3);
-      for (let i = 0; i < primaryCtForDampen; i++) {
-        entryPosBuf[i * 3] = particles[i].x;
-        entryPosBuf[i * 3 + 1] = particles[i].y;
-        entryPosBuf[i * 3 + 2] = particles[i].z;
-      }
-      beat4EntryPosRef.current = entryPosBuf;
     }
 
     transitionRef.current = {
@@ -1486,9 +1457,22 @@ export default function SceneV2(props: ISceneV2Props) {
       const rotYSpeed3 = 0.00225 * dt * 60;
       const rotXSpeed3 = 0.00075 * dt * 60;
 
-      // Constant rotation throughout all of Beat 3 — no deceleration or settling.
-      shapeRotationRef.current += rotYSpeed3;
-      shapeRotationXRef.current += rotXSpeed3;
+      // In the final 15% of Beat 3, decelerate to near-zero speed and steer
+      // Y rotation toward the nearest π/2 so the cube enters Beat 4 face-on
+      // and nearly stationary.
+      const BEAT3_DECEL_START = 0.85;
+      const rotDeltaScale =
+        beat3Progress >= BEAT3_DECEL_START
+          ? 1 - (beat3Progress - BEAT3_DECEL_START) / (1 - BEAT3_DECEL_START)
+          : 1;
+      shapeRotationRef.current += rotYSpeed3 * rotDeltaScale;
+      shapeRotationXRef.current += rotXSpeed3 * rotDeltaScale;
+      if (beat3Progress >= BEAT3_DECEL_START) {
+        const nearestFaceAngle =
+          Math.round(shapeRotationRef.current / (Math.PI / 2)) * (Math.PI / 2);
+        shapeRotationRef.current +=
+          (nearestFaceAngle - shapeRotationRef.current) * 0.03;
+      }
       const cosY3 = Math.cos(shapeRotationRef.current);
       const sinY3 = Math.sin(shapeRotationRef.current);
       const cosX3 = Math.cos(shapeRotationXRef.current);
@@ -1611,30 +1595,9 @@ export default function SceneV2(props: ISceneV2Props) {
 
       const beat4Elapsed = elapsed - beat4StartTimeRef.current;
 
-      // Over the first BLEND_DURATION_4 seconds, smoothly hand off from the Y+X
-      // rotation used in Beat 3 / Hint to a subtle Z-only rotation, avoiding any
-      // sudden orientation snap at the beat boundary.
-      const BLEND_DURATION_4 = 3.0;
-      const blendT4 = Math.min(1, beat4Elapsed / BLEND_DURATION_4);
-      const blendSmooth4 = blendT4 * blendT4 * (3 - 2 * blendT4); // smoothstep
-
-      const rotYSpeed4 = 0.00225 * (1 - blendSmooth4);
-      const rotXSpeed4 = 0.00075 * (1 - blendSmooth4);
-      const rotZSpeed4 = 0.0008 * blendSmooth4;
-
-      shapeRotationRef.current += rotYSpeed4;
-      shapeRotationXRef.current += rotXSpeed4;
-      shapeRotationZRef.current += rotZSpeed4;
-
-      const rotY4 = shapeRotationRef.current;
-      const rotX4 = shapeRotationXRef.current;
-      const cosY4 = isFinite(rotY4) ? Math.cos(rotY4) : 1;
-      const sinY4 = isFinite(rotY4) ? Math.sin(rotY4) : 0;
-      const cosX4 = isFinite(rotX4) ? Math.cos(rotX4) : 1;
-      const sinX4 = isFinite(rotX4) ? Math.sin(rotX4) : 0;
-      const cosZ4 = Math.cos(shapeRotationZRef.current);
-      const sinZ4 = Math.sin(shapeRotationZRef.current);
-
+      // No rotation during Reveal — the cube is frozen at its default (unrotated)
+      // orientation. Beat 3's deceleration ensures the cube enters Beat 4 nearly
+      // stationary, so there is no snap at the beat boundary.
       const figJitter4 = 0.006;
       const tOscFig4 = elapsed * 0.5;
 
@@ -1657,24 +1620,11 @@ export default function SceneV2(props: ISceneV2Props) {
           p.targetZ =
             p.homeZ + Math.sin(tOscFig4 * 1.1 + phase * 1.3) * figJitter4;
         } else {
-          // Wave front or not yet reached: lerp between (rotated) cube target and home.
-          // Apply Y-axis then X-axis rotation matching Beat 3's formula exactly,
-          // with the angle smoothly decelerating from the Beat 3 entry angle to 0
-          // over warmupDuration4 so there is no sudden orientation snap.
-          const baseX4 = sortedTargets4[o];
-          const baseY4 = sortedTargets4[o + 1];
-          const baseZ4 = sortedTargets4[o + 2];
-          // Y rotation then X rotation (same as Beat 3)
-          const rx4 = cosY4 * baseX4 - sinY4 * baseZ4;
-          const ry4 = baseY4;
-          const rz4 = sinY4 * baseX4 + cosY4 * baseZ4;
-          const yx4X = rx4;
-          const yx4Y = cosX4 * ry4 - sinX4 * rz4;
-          const yx4Z = sinX4 * ry4 + cosX4 * rz4;
-          // Z rotation applied last (fades in over BLEND_DURATION_4)
-          const cubeX4 = cosZ4 * yx4X - sinZ4 * yx4Y;
-          const cubeY4 = sinZ4 * yx4X + cosZ4 * yx4Y;
-          const cubeZ4 = yx4Z;
+          // Wave front or not yet reached: lerp between cube target and home.
+          // Cube targets are unrotated — no rotation is applied during Reveal.
+          const cubeX4 = sortedTargets4[o];
+          const cubeY4 = sortedTargets4[o + 1];
+          const cubeZ4 = sortedTargets4[o + 2];
 
           const waveEdge4 = waveRadius4 - distFromOrigin4;
           const rawFrac4 = Math.max(0, Math.min(1, waveEdge4 / waveWidth4));
