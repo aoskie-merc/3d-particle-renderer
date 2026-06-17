@@ -1256,8 +1256,8 @@ export default function SceneV2(props: ISceneV2Props) {
         beat2Elapsed / Math.max(beatDurationRef.current, 1),
       );
 
-      const rotYSpeed2 = 0.003 * dt * 60;
-      const rotXSpeed2 = 0.001 * dt * 60;
+      const rotYSpeed2 = 0.00225 * dt * 60;
+      const rotXSpeed2 = 0.00075 * dt * 60;
 
       if (beat2Progress > 0.75) {
         // Final 25%: reduce speed by up to 50% so Beat 3 starts from a predictable angle
@@ -1415,8 +1415,8 @@ export default function SceneV2(props: ISceneV2Props) {
       const returnToSquare =
         beat3Progress > 0.75 ? smoothstep((beat3Progress - 0.75) / 0.25) : 0;
 
-      const rotYSpeed3 = 0.003 * dt * 60;
-      const rotXSpeed3 = 0.001 * dt * 60;
+      const rotYSpeed3 = 0.00225 * dt * 60;
+      const rotXSpeed3 = 0.00075 * dt * 60;
 
       // Cube continues to rotate; in final 25% steer toward nearest clean angle (2π multiple)
       // so Beat 4 starts with rotation ≈ 0 without the cube appearing to stop.
@@ -1806,9 +1806,9 @@ export default function SceneV2(props: ISceneV2Props) {
           }
         }
       } else if (currentBeat === 1) {
-        // Gentle cube rotation starts in Swirl In — 70% of Beat 2 speed for continuity
-        shapeRotationRef.current += 0.003 * 0.7 * dt * 60;
-        shapeRotationXRef.current += 0.001 * 0.7 * dt * 60;
+        // Cube rotation in Swirl In — same constant speed as Beat 2 and Beat 3
+        shapeRotationRef.current += 0.00225 * dt * 60;
+        shapeRotationXRef.current += 0.00075 * dt * 60;
 
         // Beat 1: lerp primary particles toward the halfway point (50% ring, 50% shape).
         // Scale speed so the lerp reaches ~99% in beatDuration seconds.
