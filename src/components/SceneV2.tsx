@@ -1695,8 +1695,13 @@ export default function SceneV2(props: ISceneV2Props) {
 
       }
 
+      // Only orbit particles use boid flocking in Beat 4 — primary particles must
+      // stay locked to the rotating cube target until the wave releases them.
+      // Passing all particles to stepBoids causes the boid home-spring to pull
+      // primary particles toward homeX/Y/Z (the figure), deforming the cube before
+      // the wave arrives. This matches the Beat 2 pattern exactly.
       stepBoids(
-        particles as unknown as IBoidParticle[],
+        orbitParticlesRef.current as unknown as IBoidParticle[],
         ORBIT_BOID_PARAMS,
         elapsed,
       );
