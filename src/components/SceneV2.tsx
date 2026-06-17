@@ -1445,8 +1445,12 @@ export default function SceneV2(props: ISceneV2Props) {
 
       // Shape breathing: very slow dreamy morph cycle; speed controlled by hintMeltSpeed slider.
       // 0.08 → one full oscillation ≈ 12.5 s at default hintMeltSpeed=1.0.
+      // A 300ms delay syncs the morph start with the text fade-in in AppV2
+      // ("Every business has its own shape" appears after a 300ms cross-fade).
       const breatheSpeed = 0.08 * hintMeltSpeedRef.current;
-      const morphPhase = beat3Elapsed * breatheSpeed;
+      const MORPH_DELAY = 0.3;
+      const morphElapsed = Math.max(0, beat3Elapsed - MORPH_DELAY);
+      const morphPhase = morphElapsed * breatheSpeed;
       // In the final 40%, steer targets back to cube so Beat 4 starts clean.
       // Finishes at 85% so the last 15% is fully at cube — clean handoff to Beat 4.
       const RETURN_START = 0.6;
@@ -1493,15 +1497,15 @@ export default function SceneV2(props: ISceneV2Props) {
         const baseZ = sortedTargets3[i3 + 2];
 
         // Breathing morph: cycle cube→sphere→cube; blend back to cube in final 25%.
-        // Phase offset +0.75 ensures morphPhase=0 maps to t=0 (pure cube) because
-        // sin(0.75 × 2π) = sin(3π/2) = −1 → t=(−1+1)/2=0. Without this offset,
-        // morphPhase=0 gives t=0.5 (halfway to sphere), causing a shape jump on the
-        // first frame of Beat 3 relative to Beat 2's pure-cube final state.
+        // With the cosine formula, morphPhase=0 maps to t=0 (pure cube) — no phase
+        // offset is needed. (A stale +0.75 offset was previously present here; it
+        // was correct for a sin-based formula but caused the morph to start at
+        // t=0.5 with cos, creating a shape jump on Beat 3 entry.)
         const [morphTargX, morphTargY, morphTargZ] = morphCubeTarget(
           baseX,
           baseY,
           baseZ,
-          morphPhase + 0.75,
+          morphPhase,
         );
         const preMorphX = lerp(morphTargX, baseX, returnToSquare);
         const preMorphY = lerp(morphTargY, baseY, returnToSquare);
