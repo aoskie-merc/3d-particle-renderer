@@ -10,6 +10,7 @@ import type {
   THintShape,
   THintStyle,
   THintClarity,
+  THintMotionStyle,
 } from "./types";
 import SceneV2 from "./components/SceneV2";
 import styles from "./AppV2.module.css";
@@ -131,10 +132,14 @@ const DS_MAGIC_COLORS = [
 
 type TDensityLabel = "Sparse" | "Medium" | "Dense";
 
-const DENSITY_PRESETS: { label: TDensityLabel; skinCount: number }[] = [
-  { label: "Sparse", skinCount: 20_000 },
-  { label: "Medium", skinCount: 40_000 },
-  { label: "Dense", skinCount: 65_000 },
+const DENSITY_PRESETS: {
+  label: TDensityLabel;
+  swarmCount: number;
+  skinCount: number;
+}[] = [
+  { label: "Sparse", swarmCount: 4_000, skinCount: 20_000 },
+  { label: "Medium", swarmCount: 6_000, skinCount: 40_000 },
+  { label: "Dense", swarmCount: 8_000, skinCount: 65_000 },
 ];
 
 const DEFAULT_BEAT_DURATIONS: Record<TBeat, number> = {
@@ -342,10 +347,11 @@ export default function AppV2() {
 
   // ── Settings ──────────────────────────────────────────────────────────────
   // Fixed swarm count — Dense/Sparse only affects the surface skin layer.
-  const particleCount = 6_000;
   const [densityLabel, setDensityLabel] = useState<TDensityLabel>("Medium");
-  const skinParticleCount =
-    DENSITY_PRESETS.find((p) => p.label === densityLabel)?.skinCount ?? 40_000;
+  const densityPreset =
+    DENSITY_PRESETS.find((p) => p.label === densityLabel) ?? DENSITY_PRESETS[1];
+  const particleCount = densityPreset.swarmCount;
+  const skinParticleCount = densityPreset.skinCount;
   const [particleSize, setParticleSize] = useState(0.0033);
   const [opacity, setOpacity] = useState(0.8);
   const [swirlStrength, setSwirlStrength] = useState(0.001);
@@ -365,8 +371,8 @@ export default function AppV2() {
     "still" | "shimmer" | "breathe" | "flow"
   >("flow");
   const [surfaceDepthBias, setSurfaceDepthBias] =
-    useState<TSurfaceDepthBias>("uniform");
-  const [depthSizing, setDepthSizing] = useState<TDepthSizing>("flat");
+    useState<TSurfaceDepthBias>("crease");
+  const [depthSizing, setDepthSizing] = useState<TDepthSizing>("depth");
   const [depthOpacityMode, setDepthOpacityMode] =
     useState<TDepthOpacityMode>("off");
   const [cubeScale, setCubeScale] = useState(1.5);
@@ -375,6 +381,9 @@ export default function AppV2() {
   const [hintStyle, setHintStyle] = useState<THintStyle>("bulge");
   const [hintSpread, setHintSpread] = useState(0.54);
   const [hintShape, setHintShape] = useState<THintShape>("blob");
+  const [hintMotionStyle, setHintMotionStyle] =
+    useState<THintMotionStyle>("searching");
+  const [hintSweepSpeed, setHintSweepSpeed] = useState(1.0);
   const [revealStages, setRevealStages] = useState(4);
   const [waveSpeed, setWaveSpeed] = useState(1.5);
   const [transitionDuration, setTransitionDuration] = useState(1.8);
@@ -775,6 +784,8 @@ export default function AppV2() {
             hintStyle={hintStyle}
             hintSpread={hintSpread}
             hintShape={hintShape}
+            hintMotionStyle={hintMotionStyle}
+            hintSweepSpeed={hintSweepSpeed}
             revealStages={revealStages}
             waveSpeed={waveSpeed}
             transitionDuration={transitionDuration}
@@ -1381,6 +1392,49 @@ export default function AppV2() {
                       </button>
                     ))}
                   </div>
+                </div>
+                <div className={styles.controlRow}>
+                  <span className={styles.controlLabelText}>Hint Motion</span>
+                  <div className={styles.segmented}>
+                    {(["searching", "breathing", "melting"] as const).map(
+                      (m) => (
+                        <button
+                          key={m}
+                          className={`${styles.segmentBtn} ${hintMotionStyle === m ? styles.segmentBtnActive : ""}`}
+                          onClick={() => setHintMotionStyle(m)}
+                        >
+                          {m === "searching"
+                            ? "Searching"
+                            : m === "breathing"
+                              ? "Breathing"
+                              : "Melting"}
+                        </button>
+                      ),
+                    )}
+                  </div>
+                </div>
+                <div className={styles.controlRow}>
+                  <label className={styles.controlLabel}>
+                    <span>Sweep Speed</span>
+                    <EditableSliderValue
+                      displayValue={hintSweepSpeed.toFixed(1)}
+                      inputDefault={hintSweepSpeed}
+                      onCommit={setHintSweepSpeed}
+                      min={0.2}
+                      max={3.0}
+                    />
+                  </label>
+                  <input
+                    className={styles.slider}
+                    type="range"
+                    min={0.2}
+                    max={3.0}
+                    step={0.1}
+                    value={hintSweepSpeed}
+                    onChange={(e) =>
+                      setHintSweepSpeed(parseFloat(e.target.value))
+                    }
+                  />
                 </div>
                 <div className={styles.controlRow}>
                   <label className={styles.controlLabel}>

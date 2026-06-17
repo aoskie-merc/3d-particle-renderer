@@ -29,6 +29,7 @@ import {
 } from "../utils/surfaceSampler";
 import { loadStaticModel } from "../utils/meshIngest";
 import type {
+  THintMotionStyle,
   TSurfaceDepthBias,
   TDepthSizing,
   TDepthOpacityMode,
@@ -251,6 +252,10 @@ export interface ISceneV2Props {
   waveSpeed?: number;
   /** Seconds to blend into a new beat's dynamics (0 = instant, 1.8 = default gentle ramp). */
   transitionDuration?: number;
+  /** Controls the motion style of the cube deformation during Beat 3 (Hint). */
+  hintMotionStyle?: THintMotionStyle;
+  /** Multiplier on the sweep period for "searching" motion style (0.2–3.0, default 1.0). */
+  hintSweepSpeed?: number;
 }
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
@@ -353,6 +358,8 @@ export default function SceneV2(props: ISceneV2Props) {
     revealStages = 4,
     waveSpeed = 1.5,
     transitionDuration = 1.8,
+    hintMotionStyle = "searching",
+    hintSweepSpeed = 1.0,
   } = props;
 
   // Keep stable refs to latest props so useFrame closures always read fresh values
@@ -382,6 +389,10 @@ export default function SceneV2(props: ISceneV2Props) {
   hintCyclesRef.current = hintCycles;
   const hintClarityRef = useRef(hintClarity);
   hintClarityRef.current = hintClarity;
+  const hintMotionStyleRef = useRef(hintMotionStyle);
+  hintMotionStyleRef.current = hintMotionStyle;
+  const hintSweepSpeedRef = useRef(hintSweepSpeed);
+  hintSweepSpeedRef.current = hintSweepSpeed;
   const hintStyleRef = useRef(hintStyle);
   hintStyleRef.current = hintStyle;
   const hintSpreadRef = useRef(hintSpread);
@@ -1377,36 +1388,71 @@ export default function SceneV2(props: ISceneV2Props) {
 
       const t = beat3Elapsed;
 
-      // Map hintClarity to maxMorphFraction: whisper=0.12, subtle=0.20, suggestive=0.35
+      // Map hintClarity to maxMorphFraction: whisper=0.35, subtle=0.55, suggestive=0.70
       const clarityFraction =
         hintClarityRef.current === "suggestive"
-          ? 0.35
+          ? 0.7
           : hintClarityRef.current === "subtle"
-            ? 0.2
-            : 0.12;
+            ? 0.55
+            : 0.35;
 
-      // Organic morphFraction: multiple slow sine waves create irregular, never-snapping drift
-      const rawMorph =
-        clarityFraction *
-        (0.5 +
-          0.3 * Math.sin(t * 0.4) +
-          0.2 * Math.sin(t * 0.7 + 1.2) +
-          0.1 * Math.sin(t * 1.1 + 2.4));
-      const morphFraction = Math.max(0, Math.min(clarityFraction, rawMorph));
+      const motionStyle = hintMotionStyleRef.current;
+      const sweepSpeed = hintSweepSpeedRef.current;
+
+      // ── Motion style: compute morphFraction and attNX/Y/Z per style ─────────
+
+      let morphFraction: number;
+      let attNX: number;
+      let attNY: number;
+      let attNZ: number;
+
+      if (motionStyle === "breathing") {
+        // Whole mass slowly inhales/exhales — 7s cycle
+        const breathPhase = Math.sin(t * ((Math.PI * 2) / 7.0));
+        morphFraction = clarityFraction * (0.5 + 0.5 * breathPhase);
+        // Uniform: slowly rotating attention (same gentle drift as before)
+        const bAX = Math.sin(t * 0.15);
+        const bAY = Math.cos(t * 0.12) * 0.5;
+        const bAZ = Math.sin(t * 0.08 + 0.5);
+        const bLen = Math.sqrt(bAX * bAX + bAY * bAY + bAZ * bAZ);
+        attNX = bLen > 0.001 ? bAX / bLen : 0;
+        attNY = bLen > 0.001 ? bAY / bLen : 1;
+        attNZ = bLen > 0.001 ? bAZ / bLen : 0;
+      } else if (motionStyle === "melting") {
+        // Organic drift, pulled by curvature — no sharp spatial focus
+        const rawMorph =
+          clarityFraction *
+          (0.5 +
+            0.3 * Math.sin(t * 0.4) +
+            0.2 * Math.sin(t * 0.7 + 1.2) +
+            0.1 * Math.sin(t * 1.1 + 2.4));
+        morphFraction = Math.max(0, Math.min(clarityFraction, rawMorph));
+        const mAX = Math.sin(t * 0.15);
+        const mAY = Math.cos(t * 0.12) * 0.5;
+        const mAZ = Math.sin(t * 0.08 + 0.5);
+        const mLen = Math.sqrt(mAX * mAX + mAY * mAY + mAZ * mAZ);
+        attNX = mLen > 0.001 ? mAX / mLen : 0;
+        attNY = mLen > 0.001 ? mAY / mLen : 1;
+        attNZ = mLen > 0.001 ? mAZ / mLen : 0;
+      } else {
+        // "searching" — one region at a time, sweeping slowly
+        const SWEEP_PERIOD = 8.0; // seconds per full sweep
+        const effectiveSweepPeriod = SWEEP_PERIOD / sweepSpeed;
+        const sweepAngle = (t / effectiveSweepPeriod) * Math.PI * 2;
+
+        // Attention point sweeps around the figure: head → right shoulder → torso → left shoulder
+        const sAX = Math.sin(sweepAngle) * 0.4;
+        const sAY = 0.3 + Math.cos(sweepAngle * 0.7) * 0.5;
+        const sAZ = Math.cos(sweepAngle * 0.5) * 0.3;
+        const sLen = Math.sqrt(sAX * sAX + sAY * sAY + sAZ * sAZ);
+        attNX = sLen > 0.001 ? sAX / sLen : 0;
+        attNY = sLen > 0.001 ? sAY / sLen : 1;
+        attNZ = sLen > 0.001 ? sAZ / sLen : 0;
+        // morphFraction is used at high amplitude; per-particle spatial falloff handles focus
+        morphFraction = clarityFraction * 0.9;
+      }
+
       beat3MorphFractionRef.current = morphFraction;
-
-      // Slowly rotating attention direction — determines which spatial region is "active"
-      const attentionX = Math.sin(t * 0.15);
-      const attentionY = Math.cos(t * 0.12) * 0.5;
-      const attentionZ = Math.sin(t * 0.08 + 0.5);
-      const attLen = Math.sqrt(
-        attentionX * attentionX +
-          attentionY * attentionY +
-          attentionZ * attentionZ,
-      );
-      const attNX = attLen > 0.001 ? attentionX / attLen : 0;
-      const attNY = attLen > 0.001 ? attentionY / attLen : 1;
-      const attNZ = attLen > 0.001 ? attentionZ / attLen : 0;
 
       // Cube continues to rotate (same as Beat 2)
       shapeRotationRef.current += 0.001 * dt * 60;
