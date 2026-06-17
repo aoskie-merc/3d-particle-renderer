@@ -455,7 +455,7 @@ export default function AppV2() {
     (saved?.debugRotX as number) ?? -1.59,
   );
   const [debugRotY, setDebugRotY] = useState(
-    (saved?.debugRotY as number) ?? 0.01,
+    (saved?.debugRotY as number) ?? 1.57,
   );
   const [debugRotZ, setDebugRotZ] = useState(
     (saved?.debugRotZ as number) ?? -0.19,

@@ -879,7 +879,7 @@ export default function SceneV2(props: ISceneV2Props) {
 
     // Apply the current rotation/scale transform so home targets reflect the
     // oriented figure, not the raw unrotated mesh positions.
-    const rot = debugMeshRotationRef.current ?? { x: -1.59, y: 0.01, z: -0.19 };
+    const rot = debugMeshRotationRef.current ?? { x: -1.59, y: 1.57, z: -0.19 };
     const centroid = applyRotationToHomes(
       particles,
       rawHomePositionsRef.current,
@@ -949,7 +949,7 @@ export default function SceneV2(props: ISceneV2Props) {
     const rawPos = rawHomePositionsRef.current;
     if (particles.length === 0 || rawPos.length === 0) return;
 
-    const rot = debugMeshRotation ?? { x: -1.59, y: 0.01, z: -0.19 };
+    const rot = debugMeshRotation ?? { x: -1.59, y: 1.57, z: -0.19 };
     const centroid = applyRotationToHomes(
       particles,
       rawPos,
