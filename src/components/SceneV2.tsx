@@ -1401,8 +1401,8 @@ export default function SceneV2(props: ISceneV2Props) {
       // Ramp from Beat 1's approximate effective alpha (~0.009/frame at default
       // beatDuration=8) up to Beat 2's steady-state rate over 3 s so there is no
       // sudden speed burst when transitioning from Swirl In to Form.
-      const LERP_RATE_BEAT1_APPROX = 0.009;
-      const LERP_RATE_BEAT2_TARGET = 0.025;
+      const LERP_RATE_BEAT1_APPROX = 0.0063;
+      const LERP_RATE_BEAT2_TARGET = 0.0175;
       const beat2Warmup = Math.min(1, beat2Elapsed / 3.0);
       const lerpRate2 = lerp(
         LERP_RATE_BEAT1_APPROX,
@@ -1538,7 +1538,7 @@ export default function SceneV2(props: ISceneV2Props) {
         const finalZ3 = sinX3 * ry3 + cosX3 * rz3;
 
         // Smooth damped lerp toward morphed target — no spring overshoot.
-        // Ramp from Beat 2's lerp rate (0.025) to Beat 3's target rate (0.03)
+        // Ramp from Beat 2's lerp rate (0.0175) to Beat 3's target rate (0.03)
         // over the first 2 seconds so there is no speed surge on entry.
         const LERP_RATE_END_2 = 0.025;
         const LERP_RATE_TARGET_3 = 0.03;
