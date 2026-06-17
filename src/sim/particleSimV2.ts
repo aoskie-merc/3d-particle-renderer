@@ -365,10 +365,11 @@ export function getLerpSpeedForBeat(beat: TBeat): number {
  * Reveal feel like one continuous shape deforming rather than two particle
  * systems swapping places.
  *
- * Uses an O(n log n) spatial sort: particles and cube targets are both sorted
- * by Y→X→Z, then paired index-by-index. This ensures the most visually
- * important axis (vertical Y) is locally matched. A particle near the top of
- * the figure will receive a cube target near the top of the cube.
+ * Uses an O(n log n) spatial sort: particles are sorted by homeZ ascending
+ * (most-negative = head, because debugRotX ≈ -π/2 maps raw-Y to -Z in world space)
+ * and cube targets are sorted by cubeY descending (top of cube first). Pairing
+ * rank-by-rank ensures the head of the figure always receives a cube target near
+ * the top of the cube, keeping transitions visually local.
  *
  * Must be called AFTER homeX/Y/Z are set on all particles (i.e., after
  * applyRotationToHomes runs) and after cubeTargets are generated.
@@ -382,18 +383,21 @@ export function reassignCubeTargetsByProximity(
 ): Float32Array {
   const n = particles.length;
 
-  // Sort particle indices by homeY (primary), homeX (secondary), homeZ (tertiary)
+  // Sort particle indices by homeZ ascending (most-negative = head first).
+  // With debugRotX ≈ -π/2, the figure's vertical axis (raw Y) maps to -Z in world
+  // space: head has the most-negative homeZ, feet have the least-negative homeZ.
   const particleOrder = Array.from({ length: n }, (_, i) => i).sort((a, b) => {
-    const dy = particles[a].homeY - particles[b].homeY;
-    if (dy !== 0) return dy;
+    const dz = particles[a].homeZ - particles[b].homeZ;
+    if (dz !== 0) return dz;
     const dx = particles[a].homeX - particles[b].homeX;
     if (dx !== 0) return dx;
-    return particles[a].homeZ - particles[b].homeZ;
+    return particles[a].homeY - particles[b].homeY;
   });
 
-  // Sort cube target indices by Y (primary), X (secondary), Z (tertiary)
+  // Sort cube target indices by Y descending (highest = top of cube first).
+  // rank 0 = top of cube ↔ head of figure (most-negative homeZ, rank 0 above).
   const cubeOrder = Array.from({ length: n }, (_, i) => i).sort((a, b) => {
-    const dy = cubeTargets[a * 3 + 1] - cubeTargets[b * 3 + 1];
+    const dy = cubeTargets[b * 3 + 1] - cubeTargets[a * 3 + 1];
     if (dy !== 0) return dy;
     const dx = cubeTargets[a * 3] - cubeTargets[b * 3];
     if (dx !== 0) return dx;

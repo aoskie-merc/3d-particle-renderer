@@ -685,23 +685,26 @@ export default function SceneV2(props: ISceneV2Props) {
     const primaryCount = n - orbitCount;
     if (primaryCount === 0) return;
 
-    // Wave origin = centroid of top 20% particles by homeY
-    let maxY = -Infinity,
-      minY = Infinity;
+    // Wave origin = centroid of top 20% particles by -homeZ
+    // With debugRotX ≈ -π/2, the figure's standing height (raw Y) maps to -Z in world
+    // space. The head has the most-negative homeZ; -homeZ is the correct "up" axis.
+    let maxNegZ = -Infinity,
+      minNegZ = Infinity;
     for (let i = 0; i < primaryCount; i++) {
-      if (particles[i].homeY > maxY) maxY = particles[i].homeY;
-      if (particles[i].homeY < minY) minY = particles[i].homeY;
+      const negZ = -particles[i].homeZ;
+      if (negZ > maxNegZ) maxNegZ = negZ;
+      if (negZ < minNegZ) minNegZ = negZ;
     }
-    // Store Y bounds for Beat 4 Y-plane sweep
-    waveMinYRef.current = minY;
-    waveMaxYRef.current = maxY;
-    const threshold = minY + (maxY - minY) * 0.8;
+    // Store -homeZ bounds for Beat 4 sweep (refs keep the same names to minimise diff)
+    waveMinYRef.current = minNegZ;
+    waveMaxYRef.current = maxNegZ;
+    const threshold = minNegZ + (maxNegZ - minNegZ) * 0.8;
     let cx = 0,
       cy = 0,
       cz = 0,
       cnt = 0;
     for (let i = 0; i < primaryCount; i++) {
-      if (particles[i].homeY >= threshold) {
+      if (-particles[i].homeZ >= threshold) {
         cx += particles[i].homeX;
         cy += particles[i].homeY;
         cz += particles[i].homeZ;
@@ -709,7 +712,7 @@ export default function SceneV2(props: ISceneV2Props) {
       }
     }
     const ox = cnt > 0 ? cx / cnt : 0;
-    const oy = cnt > 0 ? cy / cnt : maxY;
+    const oy = cnt > 0 ? cy / cnt : 0;
     const oz = cnt > 0 ? cz / cnt : 0;
     waveOriginRef.current = { x: ox, y: oy, z: oz };
 
@@ -1641,8 +1644,8 @@ export default function SceneV2(props: ISceneV2Props) {
         const p = particles[i];
         const phase = i * 0.37;
 
-        if (p.homeY >= waveY4 + waveWidthY4) {
-          // Solidified: above the wave front, permanently at figure surface
+        if (-p.homeZ >= waveY4 + waveWidthY4) {
+          // Solidified: head-side of wave front, permanently at figure surface
           p.targetX = p.homeX + Math.sin(tOscFig4 + phase) * figJitter4;
           p.targetY = p.homeY + Math.cos(tOscFig4 * 0.7 + phase) * figJitter4;
           p.targetZ =
@@ -1662,8 +1665,8 @@ export default function SceneV2(props: ISceneV2Props) {
           const cubeY4 = cosX4 * ry4 - sinX4 * rz4;
           const cubeZ4 = sinX4 * ry4 + cosX4 * rz4;
 
-          // waveEdgeY4 > 0 means particle Y is above the sweep plane (being revealed)
-          const waveEdgeY4 = p.homeY - waveY4;
+          // waveEdgeY4 > 0 means particle is on the head-side of the sweep plane
+          const waveEdgeY4 = -p.homeZ - waveY4;
           const rawFrac4 = Math.max(0, Math.min(1, waveEdgeY4 / waveWidthY4));
           const t4 = rawFrac4 * rawFrac4 * (3 - 2 * rawFrac4); // smoothstep
           p.targetX = cubeX4 * (1 - t4) + p.homeX * t4;
