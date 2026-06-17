@@ -311,7 +311,7 @@ function applyRotationToHomes(
   cz /= written;
   // Lift the figure upward so the full body is visible in frame
   // (centroid is near the waist; without a lift, lower body is clipped)
-  const FIGURE_Y_LIFT = 1.2;
+  const FIGURE_Y_LIFT = 0.9;
   for (let i = 0; i < written; i++) {
     particles[i].homeX -= cx;
     particles[i].homeY -= cy - FIGURE_Y_LIFT;
@@ -986,63 +986,10 @@ export default function SceneV2(props: ISceneV2Props) {
       beat2StartTimeRef.current = -1; // initialized on first useFrame tick
     }
 
-    // Reset Beat 3 morphing clay state and pre-compute per-particle weights
+    // Reset Beat 3 melt state
     if (beat === 3) {
       beat3StartTimeRef.current = -1;
       hintPhaseRef.current = 0;
-      beat3MorphFractionRef.current = 0;
-
-      // Pre-compute per-particle curvature + prominence weights (0–1).
-      // Higher weight = more likely to drift toward figure surface during hint.
-      const weightArr = new Float32Array(primaryCtForDampen);
-      let minY3 = Infinity,
-        maxY3 = -Infinity,
-        maxXAbs3 = 0;
-      for (let i = 0; i < primaryCtForDampen; i++) {
-        const p = particles[i];
-        if (p.homeY < minY3) minY3 = p.homeY;
-        if (p.homeY > maxY3) maxY3 = p.homeY;
-        const ax = Math.abs(p.homeX);
-        if (ax > maxXAbs3) maxXAbs3 = ax;
-      }
-      const yRange3 = maxY3 - minY3 + 0.001;
-      for (let i = 0; i < primaryCtForDampen; i++) {
-        const p = particles[i];
-        const yNorm = (p.homeY - minY3) / yRange3;
-        const xNorm = Math.abs(p.homeX) / (maxXAbs3 + 0.001);
-        if (yNorm > 0.8) {
-          weightArr[i] = 1.0; // head / top — most dramatic
-        } else if (xNorm > 0.7) {
-          weightArr[i] = 0.7; // extremities (hands, arms)
-        } else {
-          weightArr[i] = 0.3; // flat body regions
-        }
-      }
-      // Boost by local surface curvature: creases, face, hands peek through more
-      const curvRadius2 = 0.09;
-      const curvStep = Math.max(1, Math.floor(primaryCtForDampen / 40));
-      for (let i = 0; i < primaryCtForDampen; i++) {
-        const pi = particles[i];
-        let curvSum = 0;
-        let curvCnt = 0;
-        for (let j = 0; j < primaryCtForDampen; j += curvStep) {
-          const pj = particles[j];
-          const dx = pj.homeX - pi.homeX;
-          const dy = pj.homeY - pi.homeY;
-          const dz = pj.homeZ - pi.homeZ;
-          if (dx * dx + dy * dy + dz * dz < curvRadius2) {
-            const dot =
-              pi.normalX * pj.normalX +
-              pi.normalY * pj.normalY +
-              pi.normalZ * pj.normalZ;
-            curvSum += 1 - dot;
-            curvCnt++;
-          }
-        }
-        const curvature = curvCnt > 0 ? curvSum / curvCnt : 0;
-        weightArr[i] = Math.min(1.0, weightArr[i] + curvature * 0.5);
-      }
-      beat3ParticleWeightsRef.current = weightArr;
     }
 
     // Reset Beat 4 staged reveal state; reset wave radius for new reveal pass
@@ -1349,104 +1296,31 @@ export default function SceneV2(props: ISceneV2Props) {
         p.z += (p.targetZ - p.z) * orbitAlpha2;
       }
     } else if (currentBeat === 3) {
-      // ── Beat 3: Hint — morphing clay drift ──────────────────────────────────
+      // ── Beat 3: Hint — cube melting/dissolving into organic blob ───────────
       //
-      // Particles continuously and slowly drift between the cube shape and the
-      // figure's contours, as if being gently molded from the inside.
-      // Never fully becomes the figure (capped at maxMorphFraction) and never
-      // fully returns to a rigid cube — just a slow organic drift between the two.
+      // The rigid cube loses form entirely: edges dissolve, corners round,
+      // particles settle on an expanding noisy sphere. No figure shape is
+      // referenced — purely a deformation/dissolution narrative.
 
       if (beat3StartTimeRef.current < 0) beat3StartTimeRef.current = elapsed;
       const beat3Elapsed = elapsed - beat3StartTimeRef.current;
       hintPhaseRef.current = beat3Elapsed;
 
-      const t = beat3Elapsed;
+      // meltProgress: 0 → 1 over beatDuration, scaled by hintMeltSpeed
+      const meltProgress = Math.min(
+        1,
+        (beat3Elapsed * hintMeltSpeedRef.current) /
+          Math.max(beatDurationRef.current, 1),
+      );
 
-      // Map hintClarity to maxMorphFraction: whisper=0.70, subtle=1.10, suggestive=1.40
-      const clarityFraction =
-        hintClarityRef.current === "suggestive"
-          ? 1.4
-          : hintClarityRef.current === "subtle"
-            ? 1.1
-            : 0.7;
+      // Blob radius grows as the cube melts (inscribed sphere → 60% larger)
+      const cubeRadius = cubeScaleRef.current * 0.75;
+      const blobRadius = cubeRadius * (1.0 + meltProgress * 0.6);
 
-      const motionStyle = hintMotionStyleRef.current;
-      const sweepSpeed = hintSweepSpeedRef.current;
-
-      // ── Motion style: compute morphFraction and attNX/Y/Z per style ─────────
-
-      let morphFraction: number;
-      let attNX: number;
-      let attNY: number;
-      let attNZ: number;
-
-      if (motionStyle === "breathing") {
-        // Whole mass slowly inhales/exhales — 7s cycle
-        const breathPhase = Math.sin(t * ((Math.PI * 2) / 7.0));
-        morphFraction = clarityFraction * (0.5 + 0.5 * breathPhase);
-        // Uniform: slowly rotating attention (same gentle drift as before)
-        const bAX = Math.sin(t * 0.15);
-        const bAY = Math.cos(t * 0.12) * 0.5;
-        const bAZ = Math.sin(t * 0.08 + 0.5);
-        const bLen = Math.sqrt(bAX * bAX + bAY * bAY + bAZ * bAZ);
-        attNX = bLen > 0.001 ? bAX / bLen : 0;
-        attNY = bLen > 0.001 ? bAY / bLen : 1;
-        attNZ = bLen > 0.001 ? bAZ / bLen : 0;
-      } else if (motionStyle === "melting") {
-        // Organic drift, pulled by curvature — no sharp spatial focus
-        const rawMorph =
-          clarityFraction *
-          (0.5 +
-            0.3 * Math.sin(t * 0.4) +
-            0.2 * Math.sin(t * 0.7 + 1.2) +
-            0.1 * Math.sin(t * 1.1 + 2.4));
-        morphFraction = Math.max(0, Math.min(clarityFraction, rawMorph));
-        const mAX = Math.sin(t * 0.15);
-        const mAY = Math.cos(t * 0.12) * 0.5;
-        const mAZ = Math.sin(t * 0.08 + 0.5);
-        const mLen = Math.sqrt(mAX * mAX + mAY * mAY + mAZ * mAZ);
-        attNX = mLen > 0.001 ? mAX / mLen : 0;
-        attNY = mLen > 0.001 ? mAY / mLen : 1;
-        attNZ = mLen > 0.001 ? mAZ / mLen : 0;
-      } else {
-        // "searching" — one region at a time, sweeping slowly
-        const SWEEP_PERIOD = 8.0; // seconds per full sweep
-        const effectiveSweepPeriod = SWEEP_PERIOD / sweepSpeed;
-        const sweepAngle = (t / effectiveSweepPeriod) * Math.PI * 2;
-
-        // Attention point sweeps around the figure: head → right shoulder → torso → left shoulder
-        const sAX = Math.sin(sweepAngle) * 0.4;
-        const sAY = 0.3 + Math.cos(sweepAngle * 0.7) * 0.5;
-        const sAZ = Math.cos(sweepAngle * 0.5) * 0.3;
-        const sLen = Math.sqrt(sAX * sAX + sAY * sAY + sAZ * sAZ);
-        const targetAX = sLen > 0.001 ? sAX / sLen : 0;
-        const targetAY = sLen > 0.001 ? sAY / sLen : 1;
-        const targetAZ = sLen > 0.001 ? sAZ / sLen : 0;
-
-        // Smooth the attention direction with a slow lerp to prevent sudden jumps
-        const attSmoothRate = Math.min(1, dt * 0.5);
-        beat3AttentionRef.current.x +=
-          (targetAX - beat3AttentionRef.current.x) * attSmoothRate;
-        beat3AttentionRef.current.y +=
-          (targetAY - beat3AttentionRef.current.y) * attSmoothRate;
-        beat3AttentionRef.current.z +=
-          (targetAZ - beat3AttentionRef.current.z) * attSmoothRate;
-        const attLen =
-          Math.sqrt(
-            beat3AttentionRef.current.x ** 2 +
-              beat3AttentionRef.current.y ** 2 +
-              beat3AttentionRef.current.z ** 2,
-          ) + 0.001;
-        attNX = beat3AttentionRef.current.x / attLen;
-        attNY = beat3AttentionRef.current.y / attLen;
-        attNZ = beat3AttentionRef.current.z / attLen;
-
-        // Slow sine pulse on morphFraction so particles don't all peak simultaneously
-        const pulsePhase = Math.sin(t * 0.3 + 1.0);
-        morphFraction = clarityFraction * (0.7 + 0.2 * pulsePhase);
-      }
-
-      beat3MorphFractionRef.current = morphFraction;
+      // Slow global pulse — blob gently breathes as it melts
+      const globalPulse =
+        1.0 + Math.sin(beat3Elapsed * 0.8) * 0.05 * meltProgress;
+      const effectiveBlobRadius = blobRadius * globalPulse;
 
       // Cube continues to rotate (same as Beat 2)
       shapeRotationRef.current += 0.001 * dt * 60;
@@ -1460,145 +1334,75 @@ export default function SceneV2(props: ISceneV2Props) {
         sortedCubeTargetsRef.current.length > 0
           ? sortedCubeTargetsRef.current
           : cubeTargetsRef.current;
-      const tOscShape3 = elapsed * 0.8;
-      const shapeJitter3 = 0.012;
 
-      const weights3 = beat3ParticleWeightsRef.current;
+      // Approx distance from origin to a cube corner
+      const maxDist3 = cubeScaleRef.current * 0.87;
 
-      // Accumulate centroid of the most attention-aligned particles for swarm attraction
-      let centX3 = 0,
-        centY3 = 0,
-        centZ3 = 0,
-        centCnt3 = 0;
+      const springK3 = 0.025;
+      const damping3 = 0.88;
 
       for (let i = 0; i < primaryCount; i++) {
-        const o = i * 3;
-        const baseX = sortedTargets3[o];
-        const baseY = sortedTargets3[o + 1];
-        const baseZ = sortedTargets3[o + 2];
-        const phase = i * 0.37;
+        const i3 = i * 3;
+        const p = particles[i];
 
-        // Rotate cube target (cube keeps spinning during hint)
+        // Base cube target (spatially matched), rotated to current spin angle
+        const baseX = sortedTargets3[i3];
+        const baseY = sortedTargets3[i3 + 1];
+        const baseZ = sortedTargets3[i3 + 2];
         const rx3 = cosY3 * baseX - sinY3 * baseZ;
         const ry3 = baseY;
         const rz3 = sinY3 * baseX + cosY3 * baseZ;
-        const cubeX = rx3 + Math.sin(tOscShape3 + phase) * shapeJitter3;
-        const cubeY =
-          cosX3 * ry3 -
-          sinX3 * rz3 +
-          Math.cos(tOscShape3 * 0.7 + phase) * shapeJitter3;
-        const cubeZ =
-          sinX3 * ry3 +
-          cosX3 * rz3 +
-          Math.sin(tOscShape3 * 1.1 + phase * 1.3) * shapeJitter3;
+        const cubeX = rx3;
+        const cubeY = cosX3 * ry3 - sinX3 * rz3;
+        const cubeZ = sinX3 * ry3 + cosX3 * rz3;
 
-        const p = particles[i];
-
-        const particleWeight = i < weights3.length ? weights3[i] : 0.3;
-
-        // How aligned is this particle's home position with the attention direction?
-        const hLen = Math.sqrt(
-          p.homeX * p.homeX + p.homeY * p.homeY + p.homeZ * p.homeZ,
+        // Particles farther from origin (corners) melt earlier/faster
+        const distFromOrigin = Math.sqrt(
+          cubeX * cubeX + cubeY * cubeY + cubeZ * cubeZ,
         );
-        const hNX = hLen > 0.001 ? p.homeX / hLen : 0;
-        const hNY = hLen > 0.001 ? p.homeY / hLen : 0;
-        const hNZ = hLen > 0.001 ? p.homeZ / hLen : 0;
-        const alignment = hNX * attNX + hNY * attNY + hNZ * attNZ;
+        const cornerFactor = distFromOrigin / Math.max(maxDist3, 0.001);
 
-        let spatialWeight: number;
-        let particleMorphFraction: number;
+        // Per-particle stable noise offset — golden angle for variety, no flickering
+        const noisePhase = i * 2.399;
+        const noiseAmp =
+          meltProgress * effectiveBlobRadius * (0.3 + 0.7 * cornerFactor);
+        const noiseX = Math.sin(noisePhase + beat3Elapsed * 0.3) * noiseAmp;
+        const noiseY = Math.cos(noisePhase * 1.3 + beat3Elapsed * 0.2) * noiseAmp;
+        const noiseZ = Math.sin(noisePhase * 0.7 + beat3Elapsed * 0.4) * noiseAmp;
 
-        if (motionStyle === "searching") {
-          // Sharp spatial falloff — only particles in the focused region morph deeply
-          const FOCUS_SHARPNESS = 2.0; // was 4.0 — softer edge, less abrupt activation
-          spatialWeight = Math.max(0, alignment) ** FOCUS_SHARPNESS;
-          const combinedWeight = spatialWeight * (0.3 + 0.7 * particleWeight);
-          particleMorphFraction = morphFraction * combinedWeight;
-        } else if (motionStyle === "melting") {
-          // Particles far from home (still cube-shaped) get the most pull
-          const distToHome = Math.sqrt(
-            (p.x - p.homeX) ** 2 + (p.y - p.homeY) ** 2 + (p.z - p.homeZ) ** 2,
-          );
-          const proximityWeight = Math.exp(-distToHome * 2.0);
-          const pullWeight = 1.0 - proximityWeight;
-          spatialWeight = Math.max(0, alignment);
-          particleMorphFraction =
-            morphFraction * pullWeight * (0.3 + 0.7 * particleWeight);
-        } else {
-          // "breathing" — uniform, weighted by curvature
-          spatialWeight = 0.5 + 0.5 * particleWeight;
-          particleMorphFraction = morphFraction * spatialWeight;
-        }
+        // Project cube position outward to blob sphere surface, then add noise
+        const cubeLen =
+          Math.sqrt(cubeX * cubeX + cubeY * cubeY + cubeZ * cubeZ) + 0.001;
+        const normX = cubeX / cubeLen;
+        const normY = cubeY / cubeLen;
+        const normZ = cubeZ / cubeLen;
 
-        // Blend fraction: moves particle target toward figure home position
-        const blendFactor = Math.min(1, particleMorphFraction);
-        p.targetX = cubeX + (p.homeX - cubeX) * blendFactor;
-        p.targetY = cubeY + (p.homeY - cubeY) * blendFactor;
-        p.targetZ = cubeZ + (p.homeZ - cubeZ) * blendFactor;
+        const targetX = normX * effectiveBlobRadius + noiseX;
+        const targetY = normY * effectiveBlobRadius + noiseY;
+        const targetZ = normZ * effectiveBlobRadius + noiseZ;
 
-        // Accumulate centroid of highly-active particles for swarm attraction
-        if (spatialWeight > 0.7) {
-          centX3 += p.homeX;
-          centY3 += p.homeY;
-          centZ3 += p.homeZ;
-          centCnt3++;
-        }
-      }
-
-      if (centCnt3 > 0) {
-        beat3AttentionCentroidRef.current.set(
-          centX3 / centCnt3,
-          centY3 / centCnt3,
-          centZ3 / centCnt3,
-        );
-      }
-
-      stepBoids(
-        particles as unknown as IBoidParticle[],
-        ORBIT_BOID_PARAMS,
-        elapsed,
-      );
-
-      // Full spring from frame 1 — sorted targets mean no crossing, so no warmup needed
-      const springK3 = 0.025;
-      const damping3 = 0.82;
-      const SHIMMER_AMP_3 = 0.002;
-      for (let i = 0; i < primaryCount; i++) {
-        const p = particles[i];
-        // Subtle per-particle noise keeps the surface alive between hint pulses —
-        // continuous wonder, never fully still. Golden-ratio phase offset for variety.
-        const shimmerPhase3 = i * 0.137;
-        p.vx += Math.sin(elapsed * 0.8 + shimmerPhase3) * SHIMMER_AMP_3 * dt;
-        p.vy +=
-          Math.cos(elapsed * 0.56 + shimmerPhase3 * 1.3) * SHIMMER_AMP_3 * dt;
-        p.vz +=
-          Math.sin(elapsed * 0.4 + shimmerPhase3 * 0.7) * SHIMMER_AMP_3 * dt;
-        p.vx += (p.targetX - p.x) * springK3;
-        p.vy += (p.targetY - p.y) * springK3;
-        p.vz += (p.targetZ - p.z) * springK3;
-        p.x += p.vx;
-        p.y += p.vy;
-        p.z += p.vz;
+        p.vx += (targetX - p.x) * springK3;
+        p.vy += (targetY - p.y) * springK3;
+        p.vz += (targetZ - p.z) * springK3;
         p.vx *= damping3;
         p.vy *= damping3;
         p.vz *= damping3;
+        p.x += p.vx;
+        p.y += p.vy;
+        p.z += p.vz;
       }
 
-      // Swarm/orbit particles: lerp toward cube target + weak pull toward the active region
-      const attentionCentroid3 = beat3AttentionCentroidRef.current;
-      const attractionStrength3 = 0.002;
+      // Swarm/orbit particles: lerp toward cube target + weak inward pull as cube melts
       const orbitAlpha3 = (1 - Math.exp(-0.3 * dt)) * 0.05;
+      const orbitAttraction3 = 0.001 * meltProgress;
       for (let i = primaryCount; i < n; i++) {
         const p = particles[i];
         p.x += (p.targetX - p.x) * orbitAlpha3;
         p.y += (p.targetY - p.y) * orbitAlpha3;
         p.z += (p.targetZ - p.z) * orbitAlpha3;
-        const dx3 = attentionCentroid3.x - p.x;
-        const dy3 = attentionCentroid3.y - p.y;
-        const dz3 = attentionCentroid3.z - p.z;
-        p.x += dx3 * attractionStrength3;
-        p.y += dy3 * attractionStrength3;
-        p.z += dz3 * attractionStrength3;
+        p.vx -= p.x * orbitAttraction3;
+        p.vy -= p.y * orbitAttraction3;
+        p.vz -= p.z * orbitAttraction3;
       }
     } else if (currentBeat === 4) {
       // ── Beat 4: Ripple wave reveal — cube permanently deforms into figure ─
