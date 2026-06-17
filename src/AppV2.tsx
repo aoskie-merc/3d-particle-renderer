@@ -832,8 +832,22 @@ export default function AppV2() {
     setScrubberValue(0);
     setDurationNorm(0);
     setBeat(0);
+    setNavExpanded(false);
+    setBeatsOpen(false);
+    setControlsOpen(false);
     sceneResetFnRef.current?.();
   }, [stopPlayback]);
+
+  // ── R key shortcut ────────────────────────────────────────────────────────
+  useEffect(() => {
+    const handleKey = (e: KeyboardEvent) => {
+      if ((e.key === "r" || e.key === "R") && !e.metaKey && !e.ctrlKey) {
+        handleRestart();
+      }
+    };
+    window.addEventListener("keydown", handleKey);
+    return () => window.removeEventListener("keydown", handleKey);
+  }, [handleRestart]);
 
   // ── Scene reset registration ──────────────────────────────────────────────
   const handleSceneResetRegistration = useCallback((fn: () => void) => {
