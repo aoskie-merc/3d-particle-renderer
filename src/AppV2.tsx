@@ -346,7 +346,7 @@ export default function AppV2() {
   const [densityLabel, setDensityLabel] = useState<TDensityLabel>("Medium");
   const skinParticleCount =
     DENSITY_PRESETS.find((p) => p.label === densityLabel)?.skinCount ?? 40_000;
-  const [particleSize, setParticleSize] = useState(0.0066);
+  const [particleSize, setParticleSize] = useState(0.0033);
   const [opacity, setOpacity] = useState(0.8);
   const [swirlStrength, setSwirlStrength] = useState(0.001);
   const [revealMode, setRevealMode] = useState<"anatomical" | "random">(
