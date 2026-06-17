@@ -401,6 +401,7 @@ export default function AppV2() {
   const [figurePosX, setFigurePosX] = useState(-0.1);
   const [figurePosY, setFigurePosY] = useState(0.4);
   const [figurePosZ, setFigurePosZ] = useState(0.0);
+  const [statueModel, setStatueModel] = useState<"nike" | "mercury">("nike");
 
   // One-time cleanup of old localStorage keys
   useEffect(() => {
@@ -774,6 +775,7 @@ export default function AppV2() {
           shadows={false}
         >
           <SceneV2
+            key={statueModel}
             beat={beat}
             particleCount={particleCount}
             skinParticleCount={skinParticleCount}
@@ -808,6 +810,7 @@ export default function AppV2() {
             revealStages={revealStages}
             waveSpeed={waveSpeed}
             transitionDuration={transitionDuration}
+            statueModel={statueModel}
           />
         </Canvas>
       </div>
@@ -1597,67 +1600,18 @@ export default function AppV2() {
             {debugSectionOpen && (
               <div className={styles.accordionBody}>
                 <div className={styles.controlRow}>
-                  <label className={styles.controlLabel}>
-                    <span>Rotate X</span>
-                    <EditableSliderValue
-                      displayValue={debugRotX.toFixed(2)}
-                      inputDefault={debugRotX}
-                      onCommit={setDebugRotX}
-                      min={-3.14}
-                      max={3.14}
-                    />
-                  </label>
-                  <input
-                    className={styles.slider}
-                    type="range"
-                    min={-3.14}
-                    max={3.14}
-                    step={0.05}
-                    value={debugRotX}
-                    onChange={(e) => setDebugRotX(parseFloat(e.target.value))}
-                  />
-                </div>
-                <div className={styles.controlRow}>
-                  <label className={styles.controlLabel}>
-                    <span>Rotate Y</span>
-                    <EditableSliderValue
-                      displayValue={debugRotY.toFixed(2)}
-                      inputDefault={debugRotY}
-                      onCommit={setDebugRotY}
-                      min={-3.14}
-                      max={3.14}
-                    />
-                  </label>
-                  <input
-                    className={styles.slider}
-                    type="range"
-                    min={-3.14}
-                    max={3.14}
-                    step={0.05}
-                    value={debugRotY}
-                    onChange={(e) => setDebugRotY(parseFloat(e.target.value))}
-                  />
-                </div>
-                <div className={styles.controlRow}>
-                  <label className={styles.controlLabel}>
-                    <span>Rotate Z</span>
-                    <EditableSliderValue
-                      displayValue={debugRotZ.toFixed(2)}
-                      inputDefault={debugRotZ}
-                      onCommit={setDebugRotZ}
-                      min={-3.14}
-                      max={3.14}
-                    />
-                  </label>
-                  <input
-                    className={styles.slider}
-                    type="range"
-                    min={-3.14}
-                    max={3.14}
-                    step={0.05}
-                    value={debugRotZ}
-                    onChange={(e) => setDebugRotZ(parseFloat(e.target.value))}
-                  />
+                  <span className={styles.controlLabelText}>Statue</span>
+                  <div className={styles.segmented}>
+                    {(["nike", "mercury"] as const).map((m) => (
+                      <button
+                        key={m}
+                        className={`${styles.segmentBtn} ${statueModel === m ? styles.segmentBtnActive : ""}`}
+                        onClick={() => setStatueModel(m)}
+                      >
+                        {m === "nike" ? "Nike" : "Mercury"}
+                      </button>
+                    ))}
+                  </div>
                 </div>
                 <div className={styles.controlRow}>
                   <label className={styles.controlLabel}>

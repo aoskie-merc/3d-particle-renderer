@@ -318,6 +318,8 @@ export interface ISceneV2Props {
   figurePosZ?: number;
   /** Multiplier applied to particleSize for swarm/orbit particles (ParticleSystemV2). Default 2.0. */
   swarmSizeMultiplier?: number;
+  /** Which statue model to load. Default 'nike'. */
+  statueModel?: "nike" | "mercury";
 }
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
@@ -431,6 +433,7 @@ export default function SceneV2(props: ISceneV2Props) {
     figurePosY = 0.4,
     figurePosZ = 0,
     swarmSizeMultiplier = 2.0,
+    statueModel = "nike",
   } = props;
 
   // Keep stable refs to latest props so useFrame closures always read fresh values
@@ -765,7 +768,10 @@ export default function SceneV2(props: ISceneV2Props) {
   useEffect(() => {
     let cancelled = false;
 
-    loadStaticModel(import.meta.env.BASE_URL + "model.stl").then((geom) => {
+    loadStaticModel(
+      import.meta.env.BASE_URL +
+        (statueModel === "mercury" ? "Mercury.stl" : "model.stl"),
+    ).then((geom) => {
       if (cancelled) return;
 
       geometryRef.current = geom;
