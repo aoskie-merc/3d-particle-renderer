@@ -34,6 +34,7 @@ import type {
   TDepthOpacityMode,
   THintShape,
   THintStyle,
+  THintClarity,
 } from "../types";
 import ParticleSystemV2 from "./ParticleSystemV2";
 import SkinParticleSystem from "./SkinParticleSystem";
@@ -43,9 +44,6 @@ import type { BufferGeometry, Group } from "three";
 // ── Transition constants ───────────────────────────────────────────────────────
 
 const TRANSITION_DURATION = 0.5; // seconds
-
-/** Duration of a single Beat 3 hint cycle (seconds). */
-const CYCLE_DUR = 4.2;
 
 // ── Camera targets per beat ────────────────────────────────────────────────────
 
@@ -176,158 +174,6 @@ function cubicEase(t: number): number {
   return t * t * (3 - 2 * t);
 }
 
-/**
- * Returns an emerge fraction (0–1) for a given elapsed time within a Beat 3
- * hint cycle.  Phase timing:
- *   0 – 1.2 s  : quintic ease-in-out emerge (slow swell build)
- *   1.2 – 2.0 s: hold at peak (brief crest before receding)
- *   2.0 – 3.8 s: quintic ease-in-out retract (long, graceful recession)
- *   3.8 – 4.2 s: gap (return 0)
- */
-
-// Quintic ease-in-out: much smoother than cubic, imperceptible at extremes
-function quinticEase(t: number): number {
-  return t * t * t * (t * (t * 6 - 15) + 10);
-}
-
-function computeHintEmergeFraction(t: number): number {
-  const EMERGE = 1.2;
-  const HOLD = 0.8;
-  const RETRACT = 1.8;
-  if (t <= 0) return 0;
-  if (t < EMERGE) {
-    return quinticEase(t / EMERGE);
-  }
-  if (t < EMERGE + HOLD) return 1.0;
-  if (t < EMERGE + HOLD + RETRACT) {
-    return 1 - quinticEase((t - EMERGE - HOLD) / RETRACT);
-  }
-  return 0;
-}
-
-/**
- * Picks a random anchor particle index, weighted by dramatic importance:
- * - Top 20% by homeY (head/face): weight 5
- * - Extreme X positions (hands/arms/wings): weight 3
- * - Remaining: weight 1
- * Never picks within radius 0.3 of the previous anchor's home position.
- */
-function pickWeightedAnchorIndex(
-  particles: IParticleV2[],
-  primaryCount: number,
-  prevAnchorIdx: number,
-): number {
-  if (primaryCount === 0) return 0;
-
-  let minY = Infinity,
-    maxY = -Infinity,
-    maxXAbs = 0;
-  for (let i = 0; i < primaryCount; i++) {
-    const p = particles[i];
-    if (p.homeY < minY) minY = p.homeY;
-    if (p.homeY > maxY) maxY = p.homeY;
-    const ax = Math.abs(p.homeX);
-    if (ax > maxXAbs) maxXAbs = ax;
-  }
-  const yRange = maxY - minY + 0.001;
-
-  const prevAnchor =
-    prevAnchorIdx >= 0 && prevAnchorIdx < primaryCount
-      ? particles[prevAnchorIdx]
-      : null;
-
-  const weights = new Float32Array(primaryCount);
-  for (let i = 0; i < primaryCount; i++) {
-    const p = particles[i];
-    if (prevAnchor !== null) {
-      const dx = p.homeX - prevAnchor.homeX;
-      const dy = p.homeY - prevAnchor.homeY;
-      const dz = p.homeZ - prevAnchor.homeZ;
-      if (dx * dx + dy * dy + dz * dz < 0.09) {
-        weights[i] = 0;
-        continue;
-      }
-    }
-    const yNorm = (p.homeY - minY) / yRange;
-    const xNorm = Math.abs(p.homeX) / (maxXAbs + 0.001);
-    if (yNorm > 0.8) {
-      weights[i] = 5;
-    } else if (xNorm > 0.7) {
-      weights[i] = 3;
-    } else {
-      weights[i] = 1;
-    }
-  }
-
-  // Boost weights for high-curvature regions (normal variation among neighbors).
-  // Particles at surface creases — face, hands, torso edges — have normals that
-  // diverge from their neighbors, making them more visually interesting anchors.
-  const curvRadius2 = 0.09; // 0.3² local neighborhood
-  const curvStep = Math.max(1, Math.floor(primaryCount / 40)); // ~40 neighbor samples
-  for (let i = 0; i < primaryCount; i++) {
-    if (weights[i] === 0) continue;
-    const pi = particles[i];
-    let curvSum = 0;
-    let curvCnt = 0;
-    for (let j = 0; j < primaryCount; j += curvStep) {
-      const pj = particles[j];
-      const dx = pj.homeX - pi.homeX;
-      const dy = pj.homeY - pi.homeY;
-      const dz = pj.homeZ - pi.homeZ;
-      if (dx * dx + dy * dy + dz * dz < curvRadius2) {
-        const dot =
-          pi.normalX * pj.normalX +
-          pi.normalY * pj.normalY +
-          pi.normalZ * pj.normalZ;
-        curvSum += 1 - dot;
-        curvCnt++;
-      }
-    }
-    const curvature = curvCnt > 0 ? curvSum / curvCnt : 0;
-    weights[i] *= 1 + curvature * 4; // up to 5× boost at high-curvature regions
-  }
-
-  let total = 0;
-  for (let i = 0; i < primaryCount; i++) total += weights[i];
-  if (total <= 0) return 0;
-
-  let r = Math.random() * total;
-  for (let i = 0; i < primaryCount; i++) {
-    r -= weights[i];
-    if (r <= 0) return i;
-  }
-  return 0;
-}
-
-/**
- * Applies an outward velocity impulse to orbit/swarm particles near the
- * given world-space point, simulating marble-dust debris scatter.
- */
-function applyDebrisScatterAtPoint(
-  particles: IParticleV2[],
-  primaryCount: number,
-  cx: number,
-  cy: number,
-  cz: number,
-  totalCount: number,
-): void {
-  const scatterRadius = 0.8;
-  const impulseMag = 0.015;
-  for (let i = primaryCount; i < totalCount; i++) {
-    const p = particles[i];
-    const dx = p.x - cx;
-    const dy = p.y - cy;
-    const dz = p.z - cz;
-    const dist = Math.sqrt(dx * dx + dy * dy + dz * dz);
-    if (dist < scatterRadius && dist > 0.001) {
-      const factor = impulseMag / dist;
-      p.vx += dx * factor;
-      p.vy += dy * factor;
-      p.vz += dz * factor;
-    }
-  }
-}
-
 // ── Types ─────────────────────────────────────────────────────────────────────
 
 interface ITransitionState {
@@ -390,6 +236,8 @@ export interface ISceneV2Props {
   cubeScale?: number;
   /** Number of breathe-out-and-back cycles during Beat 3 Hint (1–4, default 2). */
   hintCycles?: number;
+  /** Controls how strongly the cube morphs toward the figure contours during Beat 3. */
+  hintClarity?: THintClarity;
   /** Controls the wave shape of particle emergence within each Beat 3 hint cycle. */
   hintStyle?: THintStyle;
   /** Blob radius in world units for Beat 3 hint activation (0.2–1.0, default 0.4). */
@@ -401,6 +249,8 @@ export interface ISceneV2Props {
   /** Speed at which the ripple wave front expands during Beats 3 & 4.
    *  Internally scaled by waveMaxDist × 0.15 per second, so 1.5 = comfortable default pace. */
   waveSpeed?: number;
+  /** Seconds to blend into a new beat's dynamics (0 = instant, 1.8 = default gentle ramp). */
+  transitionDuration?: number;
 }
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
@@ -496,11 +346,13 @@ export default function SceneV2(props: ISceneV2Props) {
     depthOpacityMode = "off",
     cubeScale = 2.5,
     hintCycles = 3,
+    hintClarity = "whisper",
     hintStyle = "bulge",
     hintSpread = 0.4,
     hintShape = "blob",
     revealStages = 4,
     waveSpeed = 1.5,
+    transitionDuration = 1.8,
   } = props;
 
   // Keep stable refs to latest props so useFrame closures always read fresh values
@@ -528,8 +380,8 @@ export default function SceneV2(props: ISceneV2Props) {
   cubeScaleRef.current = cubeScale;
   const hintCyclesRef = useRef(hintCycles);
   hintCyclesRef.current = hintCycles;
-  /** Effective hint cycles for the current beat 3 run, computed from beatDuration at entry. */
-  const hintCyclesEffectiveRef = useRef(hintCycles);
+  const hintClarityRef = useRef(hintClarity);
+  hintClarityRef.current = hintClarity;
   const hintStyleRef = useRef(hintStyle);
   hintStyleRef.current = hintStyle;
   const hintSpreadRef = useRef(hintSpread);
@@ -540,6 +392,16 @@ export default function SceneV2(props: ISceneV2Props) {
   revealStagesRef.current = revealStages;
   const waveSpeedRef = useRef(waveSpeed);
   waveSpeedRef.current = waveSpeed;
+  const transitionDurationRef = useRef(transitionDuration);
+  transitionDurationRef.current = transitionDuration;
+
+  /**
+   * How "settled" we are into the current beat: 0 = just entered, 1 = fully in.
+   * Reset to 0 on every beat change and ramped up each frame over transitionDuration
+   * seconds. Multiplied into lerp/spring weights so new dynamics engage gradually
+   * rather than snapping immediately — creating the feel of one continuous narrative.
+   */
+  const beatTransitionRef = useRef(1.0);
 
   // ── Geometry & surface samples ────────────────────────────────────────────
 
@@ -649,14 +511,12 @@ export default function SceneV2(props: ISceneV2Props) {
   const hintPhaseRef = useRef(0.0);
   /** Beat 3: clock time when Beat 3 started (for hint phase calculation). */
   const beat3StartTimeRef = useRef(-1);
-  /** Beat 3: which cycle index last triggered a debris scatter (prevents per-frame repeat). */
-  const lastDebrisCycleRef = useRef(-1);
-  /**
-   * Beat 3: anchor particle indices for each hint cycle.
-   * Generated at Beat 3 entry using weighted-random sampling biased toward
-   * dramatically important regions (head, extremities).
-   */
-  const hintAnchorIndicesRef = useRef<number[]>([]);
+  /** Beat 3: current morphFraction (0–maxMorphFraction); updated every frame for smooth Beat 4 handoff. */
+  const beat3MorphFractionRef = useRef(0);
+  /** Beat 3: slowly rotating attention direction used for spatial variation. */
+  const beat3AttentionCentroidRef = useRef(new Vector3());
+  /** Beat 3: per-particle curvature + prominence weights (0–1); computed at beat entry. */
+  const beat3ParticleWeightsRef = useRef(new Float32Array(0));
   /** Beat 4: current active reveal stage (region index, 0 = first to emerge). */
   const revealStageRef = useRef(0);
   /** Beat 4: last stage index that triggered debris scatter (prevents repeat). */
@@ -1109,11 +969,11 @@ export default function SceneV2(props: ISceneV2Props) {
       beat2StartTimeRef.current = -1; // initialized on first useFrame tick
     }
 
-    // Reset Beat 3 breathing-cycle state and generate anchor indices
+    // Reset Beat 3 morphing clay state and pre-compute per-particle weights
     if (beat === 3) {
       beat3StartTimeRef.current = -1;
       hintPhaseRef.current = 0;
-      lastDebrisCycleRef.current = -1;
+      beat3MorphFractionRef.current = 0;
       // Zero velocities from Beat 2's lerp system to prevent sudden spring excitation
       const primaryCt3 = particles.length - Math.ceil(particles.length * 0.06);
       for (let i = 0; i < primaryCt3; i++) {
@@ -1122,23 +982,57 @@ export default function SceneV2(props: ISceneV2Props) {
         particles[i].vz = 0;
       }
 
-      // Compute effective cycles to fill the configured beat duration.
-      hintCyclesEffectiveRef.current = Math.max(
-        1,
-        Math.round(beatDurationRef.current / CYCLE_DUR),
-      );
-
-      // Pick one anchor particle index per hint cycle, weighted toward dramatic
-      // areas (head, extremities) and never too close to the previous anchor.
-      const primaryCt = particles.length - Math.ceil(particles.length * 0.06);
-      const anchorIndices: number[] = [];
-      let prevIdx = -1;
-      for (let ci = 0; ci < hintCyclesEffectiveRef.current; ci++) {
-        const next = pickWeightedAnchorIndex(particles, primaryCt, prevIdx);
-        anchorIndices.push(next);
-        prevIdx = next;
+      // Pre-compute per-particle curvature + prominence weights (0–1).
+      // Higher weight = more likely to drift toward figure surface during hint.
+      const weightArr = new Float32Array(primaryCt3);
+      let minY3 = Infinity,
+        maxY3 = -Infinity,
+        maxXAbs3 = 0;
+      for (let i = 0; i < primaryCt3; i++) {
+        const p = particles[i];
+        if (p.homeY < minY3) minY3 = p.homeY;
+        if (p.homeY > maxY3) maxY3 = p.homeY;
+        const ax = Math.abs(p.homeX);
+        if (ax > maxXAbs3) maxXAbs3 = ax;
       }
-      hintAnchorIndicesRef.current = anchorIndices;
+      const yRange3 = maxY3 - minY3 + 0.001;
+      for (let i = 0; i < primaryCt3; i++) {
+        const p = particles[i];
+        const yNorm = (p.homeY - minY3) / yRange3;
+        const xNorm = Math.abs(p.homeX) / (maxXAbs3 + 0.001);
+        if (yNorm > 0.8) {
+          weightArr[i] = 1.0; // head / top — most dramatic
+        } else if (xNorm > 0.7) {
+          weightArr[i] = 0.7; // extremities (hands, arms)
+        } else {
+          weightArr[i] = 0.3; // flat body regions
+        }
+      }
+      // Boost by local surface curvature: creases, face, hands peek through more
+      const curvRadius2 = 0.09;
+      const curvStep = Math.max(1, Math.floor(primaryCt3 / 40));
+      for (let i = 0; i < primaryCt3; i++) {
+        const pi = particles[i];
+        let curvSum = 0;
+        let curvCnt = 0;
+        for (let j = 0; j < primaryCt3; j += curvStep) {
+          const pj = particles[j];
+          const dx = pj.homeX - pi.homeX;
+          const dy = pj.homeY - pi.homeY;
+          const dz = pj.homeZ - pi.homeZ;
+          if (dx * dx + dy * dy + dz * dz < curvRadius2) {
+            const dot =
+              pi.normalX * pj.normalX +
+              pi.normalY * pj.normalY +
+              pi.normalZ * pj.normalZ;
+            curvSum += 1 - dot;
+            curvCnt++;
+          }
+        }
+        const curvature = curvCnt > 0 ? curvSum / curvCnt : 0;
+        weightArr[i] = Math.min(1.0, weightArr[i] + curvature * 0.5);
+      }
+      beat3ParticleWeightsRef.current = weightArr;
     }
 
     // Reset Beat 4 staged reveal state; reset wave radius for new reveal pass
@@ -1432,84 +1326,49 @@ export default function SceneV2(props: ISceneV2Props) {
         p.z += (p.targetZ - p.z) * orbitAlpha2;
       }
     } else if (currentBeat === 3) {
-      // ── Beat 3: Hint — organic blob regions tease out of the cube ──────────
+      // ── Beat 3: Hint — morphing clay drift ──────────────────────────────────
       //
-      // Each cycle picks a 3D anchor point on the figure surface (weighted toward
-      // dramatic areas: head, extremities).  Particles within `hintSpread` world
-      // units of the anchor emerge toward their figure-home positions, with a
-      // smooth radial falloff (smoothstep from centre → edge of blob radius).
-      //
-      // Three hint shapes control which particles are activated:
-      //   blob    — radial proximity in figure-home space (default, organic feel)
-      //   wedge   — proximity in cube-target space (geometric/cube-aligned cap)
-      //   contour — figure-home proximity AND normal faces roughly toward camera
-      //
-      // Cycle timing (3.0 s total, contraction-priority):
-      //   0.0 – 0.8 s : ease-in-out emerge (fast — cube gives way quickly)
-      //   0.8 – 1.1 s : hold at peak (90% of the way to figure surface)
-      //   1.1 – 2.5 s : ease-in-out retract (slow — figure gracefully recedes)
-      //   2.5 – 3.0 s : gap (fully back on cube)
+      // Particles continuously and slowly drift between the cube shape and the
+      // figure's contours, as if being gently molded from the inside.
+      // Never fully becomes the figure (capped at maxMorphFraction) and never
+      // fully returns to a rigid cube — just a slow organic drift between the two.
 
       if (beat3StartTimeRef.current < 0) beat3StartTimeRef.current = elapsed;
       const beat3Elapsed = elapsed - beat3StartTimeRef.current;
       hintPhaseRef.current = beat3Elapsed;
 
-      const totalHintCycles = hintCyclesEffectiveRef.current;
+      const t = beat3Elapsed;
 
-      const cycleIndex = Math.min(
-        Math.floor(beat3Elapsed / CYCLE_DUR),
-        totalHintCycles - 1,
+      // Map hintClarity to maxMorphFraction: whisper=0.12, subtle=0.20, suggestive=0.35
+      const clarityFraction =
+        hintClarityRef.current === "suggestive"
+          ? 0.35
+          : hintClarityRef.current === "subtle"
+            ? 0.2
+            : 0.12;
+
+      // Organic morphFraction: multiple slow sine waves create irregular, never-snapping drift
+      const rawMorph =
+        clarityFraction *
+        (0.5 +
+          0.3 * Math.sin(t * 0.4) +
+          0.2 * Math.sin(t * 0.7 + 1.2) +
+          0.1 * Math.sin(t * 1.1 + 2.4));
+      const morphFraction = Math.max(0, Math.min(clarityFraction, rawMorph));
+      beat3MorphFractionRef.current = morphFraction;
+
+      // Slowly rotating attention direction — determines which spatial region is "active"
+      const attentionX = Math.sin(t * 0.15);
+      const attentionY = Math.cos(t * 0.12) * 0.5;
+      const attentionZ = Math.sin(t * 0.08 + 0.5);
+      const attLen = Math.sqrt(
+        attentionX * attentionX +
+          attentionY * attentionY +
+          attentionZ * attentionZ,
       );
-      // Clamp cycleLocalT at CYCLE_DUR so last cycle doesn't overflow
-      const cycleLocalT =
-        cycleIndex < totalHintCycles - 1
-          ? beat3Elapsed - cycleIndex * CYCLE_DUR
-          : Math.min(beat3Elapsed - cycleIndex * CYCLE_DUR, CYCLE_DUR);
-
-      // Global emerge fraction for this cycle (drives blob; others offset per particle)
-      const globalEmergeFraction = computeHintEmergeFraction(cycleLocalT);
-
-      // Anchor particle for this cycle
-      const anchorIndices3 = hintAnchorIndicesRef.current;
-      const safeAnchorIdx = Math.max(
-        0,
-        Math.min(
-          anchorIndices3.length > 0
-            ? anchorIndices3[Math.min(cycleIndex, anchorIndices3.length - 1)]
-            : 0,
-          primaryCount - 1,
-        ),
-      );
-      const anchorParticle = particles[safeAnchorIdx];
-      const anchorX3 = anchorParticle.homeX;
-      const anchorY3 = anchorParticle.homeY;
-      const anchorZ3 = anchorParticle.homeZ;
-      const blobRadius3 = hintSpreadRef.current;
-      // Anchor surface normal — used for organic contour in blob mode
-      const anchorNX3 = anchorParticle.normalX;
-      const anchorNY3 = anchorParticle.normalY;
-      const anchorNZ3 = anchorParticle.normalZ;
-      // Organic contour radius is wider than blob radius so the patch can spread
-      // along the surface following the curvature rather than a geometric sphere.
-      const NORMAL_THRESHOLD_3 = 0.35;
-      const contourRadius3 = blobRadius3 * 2.5;
-      const contourRadius3Sq = contourRadius3 * contourRadius3;
-
-      // Debris scatter at peak (globalEmergeFraction > 0.9), once per cycle
-      if (
-        globalEmergeFraction > 0.9 &&
-        cycleIndex !== lastDebrisCycleRef.current
-      ) {
-        lastDebrisCycleRef.current = cycleIndex;
-        applyDebrisScatterAtPoint(
-          particles,
-          primaryCount,
-          anchorX3,
-          anchorY3,
-          anchorZ3,
-          n,
-        );
-      }
+      const attNX = attLen > 0.001 ? attentionX / attLen : 0;
+      const attNY = attLen > 0.001 ? attentionY / attLen : 1;
+      const attNZ = attLen > 0.001 ? attentionZ / attLen : 0;
 
       // Cube continues to rotate (same as Beat 2)
       shapeRotationRef.current += 0.001 * dt * 60;
@@ -1526,58 +1385,13 @@ export default function SceneV2(props: ISceneV2Props) {
       const tOscShape3 = elapsed * 0.8;
       const shapeJitter3 = 0.012;
 
-      const hintSty = hintStyleRef.current;
-      const hintShp = hintShapeRef.current;
+      const weights3 = beat3ParticleWeightsRef.current;
 
-      // Camera world-forward direction (reuse module-level scratch Vector3)
-      state.camera.getWorldDirection(_scratchCamDir);
-      // Negate so camDirX/Y/Z points FROM scene TOWARD camera (for normal facing test)
-      const camDirX3 = -_scratchCamDir.x;
-      const camDirY3 = -_scratchCamDir.y;
-      const camDirZ3 = -_scratchCamDir.z;
-      // Also keep view-toward-origin for contour shape test (same values, opposite sign)
-      const viewDirX3 = _scratchCamDir.x;
-      const viewDirY3 = _scratchCamDir.y;
-      const viewDirZ3 = _scratchCamDir.z;
-
-      // Anchor cube-space position (for wedge shape)
-      const anchorCubeX3 = sortedTargets3[safeAnchorIdx * 3];
-      const anchorCubeY3 = sortedTargets3[safeAnchorIdx * 3 + 1];
-      const anchorCubeZ3 = sortedTargets3[safeAnchorIdx * 3 + 2];
-
-      // Y-extents of blob particles for sweep style
-      let blobMinY3 = Infinity,
-        blobMaxY3 = -Infinity;
-      if (hintSty !== "bulge") {
-        for (let i = 0; i < primaryCount; i++) {
-          const p = particles[i];
-          const dx = p.homeX - anchorX3;
-          const dy = p.homeY - anchorY3;
-          const dz = p.homeZ - anchorZ3;
-          const dist2YExt = dx * dx + dy * dy + dz * dz;
-          let inYExt: boolean;
-          if (hintShp === "blob") {
-            // Organic contour: use normal alignment + extended radius
-            const aDotY =
-              p.normalX * anchorNX3 +
-              p.normalY * anchorNY3 +
-              p.normalZ * anchorNZ3;
-            inYExt =
-              dist2YExt < contourRadius3Sq && aDotY >= NORMAL_THRESHOLD_3;
-          } else {
-            inYExt = dist2YExt < blobRadius3 * blobRadius3;
-          }
-          if (inYExt) {
-            if (p.homeY < blobMinY3) blobMinY3 = p.homeY;
-            if (p.homeY > blobMaxY3) blobMaxY3 = p.homeY;
-          }
-        }
-        if (blobMinY3 === Infinity) {
-          blobMinY3 = anchorY3;
-          blobMaxY3 = anchorY3;
-        }
-      }
-      const blobYRange3 = Math.max(blobMaxY3 - blobMinY3, 0.001);
+      // Accumulate centroid of the most attention-aligned particles for swarm attraction
+      let centX3 = 0,
+        centY3 = 0,
+        centZ3 = 0,
+        centCnt3 = 0;
 
       for (let i = 0; i < primaryCount; i++) {
         const o = i * 3;
@@ -1601,95 +1415,40 @@ export default function SceneV2(props: ISceneV2Props) {
           Math.sin(tOscShape3 * 1.1 + phase * 1.3) * shapeJitter3;
 
         const p = particles[i];
-        let pEF = 0; // per-particle emerge fraction
 
-        // Distance from anchor in figure-home space (used for blob/contour and falloff)
-        const hdx = p.homeX - anchorX3;
-        const hdy = p.homeY - anchorY3;
-        const hdz = p.homeZ - anchorZ3;
-        const distToAnchor3 = Math.sqrt(hdx * hdx + hdy * hdy + hdz * hdz);
+        // How aligned is this particle's home position with the attention direction?
+        const hLen = Math.sqrt(
+          p.homeX * p.homeX + p.homeY * p.homeY + p.homeZ * p.homeZ,
+        );
+        const hNX = hLen > 0.001 ? p.homeX / hLen : 0;
+        const hNY = hLen > 0.001 ? p.homeY / hLen : 0;
+        const hNZ = hLen > 0.001 ? p.homeZ / hLen : 0;
+        const alignment = hNX * attNX + hNY * attNY + hNZ * attNZ;
+        const spatialWeight = Math.max(0, alignment);
 
-        // Determine if this particle is within the active blob
-        let inBlob3 = false;
-        if (hintShp === "blob") {
-          // Organic contour: activate particles whose normals align with the anchor's
-          // normal AND are within the extended contour radius. This makes the hint
-          // follow the surface curvature — like skin pushing through from inside —
-          // rather than a pure distance sphere or vertical column.
-          const aDot3 =
-            p.normalX * anchorNX3 +
-            p.normalY * anchorNY3 +
-            p.normalZ * anchorNZ3;
-          inBlob3 =
-            distToAnchor3 <= contourRadius3 && aDot3 >= NORMAL_THRESHOLD_3;
-        } else if (hintShp === "wedge") {
-          // Proximity check in cube-target space — geometric/cube-aligned cap
-          const cdx = baseX - anchorCubeX3;
-          const cdy = baseY - anchorCubeY3;
-          const cdz = baseZ - anchorCubeZ3;
-          inBlob3 =
-            cdx * cdx + cdy * cdy + cdz * cdz < blobRadius3 * blobRadius3;
-        } else {
-          // contour: figure-home proximity AND surface normal faces camera
-          if (distToAnchor3 < blobRadius3) {
-            const normalDot =
-              p.normalX * viewDirX3 +
-              p.normalY * viewDirY3 +
-              p.normalZ * viewDirZ3;
-            inBlob3 = normalDot > 0.3;
-          }
+        const particleWeight = i < weights3.length ? weights3[i] : 0.3;
+
+        // Blend fraction: both spatial alignment and per-particle prominence modulate drift
+        const blendFactor = morphFraction * particleWeight * spatialWeight;
+        p.targetX = cubeX + (p.homeX - cubeX) * blendFactor;
+        p.targetY = cubeY + (p.homeY - cubeY) * blendFactor;
+        p.targetZ = cubeZ + (p.homeZ - cubeZ) * blendFactor;
+
+        // Accumulate centroid of highly-active particles for swarm attraction
+        if (spatialWeight > 0.7) {
+          centX3 += p.homeX;
+          centY3 += p.homeY;
+          centZ3 += p.homeZ;
+          centCnt3++;
         }
+      }
 
-        if (inBlob3) {
-          // Smooth falloff: blob uses normal-alignment contour falloff; others use hard edge.
-          let smoothProximity: number;
-          if (hintShp === "blob") {
-            // Particles whose normals point most directly toward the anchor's normal
-            // emerge fully; those just above the threshold emerge barely.
-            const aDotSmooth =
-              p.normalX * anchorNX3 +
-              p.normalY * anchorNY3 +
-              p.normalZ * anchorNZ3;
-            const rawContour =
-              (aDotSmooth - NORMAL_THRESHOLD_3) / (1 - NORMAL_THRESHOLD_3);
-            smoothProximity = Math.max(0, Math.min(1, rawContour));
-          } else {
-            smoothProximity = 1.0;
-          }
-
-          // Depth shading: back-facing particles emerge slightly less for 3D form
-          const normalDot3 =
-            p.normalX * camDirX3 + p.normalY * camDirY3 + p.normalZ * camDirZ3;
-          const depthFactor = normalDot3 > 0 ? 1.0 : 0.7;
-
-          let globalEF: number;
-          if (hintSty === "bulge") {
-            globalEF = globalEmergeFraction;
-          } else if (hintSty === "pulse") {
-            // Radial ripple from anchor: centre leads, edge lags by up to 0.5 s
-            const normalizedDist3 = Math.min(distToAnchor3 / blobRadius3, 1.0);
-            const phaseShift3 = normalizedDist3 * 0.5;
-            globalEF = computeHintEmergeFraction(
-              Math.max(0, cycleLocalT - phaseShift3),
-            );
-          } else {
-            // sweep: top of blob emerges first, sweeps downward
-            const tInBlob = (p.homeY - blobMinY3) / blobYRange3;
-            const phaseShift3 = (1 - tInBlob) * 0.5;
-            globalEF = computeHintEmergeFraction(
-              Math.max(0, cycleLocalT - phaseShift3),
-            );
-          }
-          pEF = globalEF * smoothProximity * depthFactor;
-        }
-
-        // Cap emergence at 90% so the cube surface is never fully absent
-        const dynamicTargetX = cubeX + (p.homeX - cubeX) * pEF;
-        const dynamicTargetY = cubeY + (p.homeY - cubeY) * pEF;
-        const dynamicTargetZ = cubeZ + (p.homeZ - cubeZ) * pEF;
-        p.targetX = dynamicTargetX;
-        p.targetY = dynamicTargetY;
-        p.targetZ = dynamicTargetZ;
+      if (centCnt3 > 0) {
+        beat3AttentionCentroidRef.current.set(
+          centX3 / centCnt3,
+          centY3 / centCnt3,
+          centZ3 / centCnt3,
+        );
       }
 
       stepBoids(
@@ -1698,17 +1457,14 @@ export default function SceneV2(props: ISceneV2Props) {
         elapsed,
       );
 
-      // Spring force toward dynamic target — crisp response with no lerp lag.
-      // Warmup ramps from a gentle 0.008 to the full 0.04 over 1 s so the
-      // transition from Beat 2's direct-lerp system doesn't suddenly excite
-      // the spring and cause oscillation/jitter at beat entry.
+      // Very soft spring — high damping for smooth clay-like motion; ramps from 0.008
       const warmupDuration3 = 1.0;
-      const springK3Base = 0.04;
+      const springK3Base = 0.015;
       const springK3 =
         beat3Elapsed < warmupDuration3
           ? 0.008 + (springK3Base - 0.008) * (beat3Elapsed / warmupDuration3)
           : springK3Base;
-      const damping3 = 0.7;
+      const damping3 = 0.85;
       for (let i = 0; i < primaryCount; i++) {
         const p = particles[i];
         p.vx += (p.targetX - p.x) * springK3;
@@ -1722,12 +1478,21 @@ export default function SceneV2(props: ISceneV2Props) {
         p.vz *= damping3;
       }
 
+      // Swarm/orbit particles: lerp toward cube target + weak pull toward the active region
+      const attentionCentroid3 = beat3AttentionCentroidRef.current;
+      const attractionStrength3 = 0.002;
       const orbitAlpha3 = (1 - Math.exp(-0.3 * dt)) * 0.05;
       for (let i = primaryCount; i < n; i++) {
         const p = particles[i];
         p.x += (p.targetX - p.x) * orbitAlpha3;
         p.y += (p.targetY - p.y) * orbitAlpha3;
         p.z += (p.targetZ - p.z) * orbitAlpha3;
+        const dx3 = attentionCentroid3.x - p.x;
+        const dy3 = attentionCentroid3.y - p.y;
+        const dz3 = attentionCentroid3.z - p.z;
+        p.x += dx3 * attractionStrength3;
+        p.y += dy3 * attractionStrength3;
+        p.z += dz3 * attractionStrength3;
       }
     } else if (currentBeat === 4) {
       // ── Beat 4: Ripple wave reveal — cube permanently deforms into figure ─

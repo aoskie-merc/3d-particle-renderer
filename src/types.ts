@@ -6,6 +6,9 @@ export type THintStyle = "pulse" | "sweep" | "bulge";
 /** Controls the spatial shape of the activation region in Beat 3 (Hint) cycles. */
 export type THintShape = "blob" | "wedge" | "contour";
 
+/** Controls how strongly the cube morphs toward the figure contours during Beat 3 (Hint). */
+export type THintClarity = "whisper" | "subtle" | "suggestive";
+
 export type TDirectionBias = "radial" | "tangential" | "random";
 
 export type TBlendModeKey = "normal" | "additive" | "multiply";
