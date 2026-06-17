@@ -366,7 +366,7 @@ export default function SceneV2(props: ISceneV2Props) {
     transitionDuration = 2.25,
     hintMeltSpeed = 1.0,
     figurePosX = 0,
-    figurePosY = 0.9,
+    figurePosY = 0.4,
     figurePosZ = 0,
   } = props;
 
