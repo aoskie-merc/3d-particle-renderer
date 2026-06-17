@@ -1628,22 +1628,20 @@ export default function SceneV2(props: ISceneV2Props) {
 
       const beat4Elapsed = elapsed - beat4StartTimeRef.current;
 
-      // Rotation unwind: smoothstep-decelerate from Beat 3 entry angle to 0
-      // over ROT_UNWIND_DURATION_4 s so there is no sudden orientation snap.
-      // Particles stay locked to the rotating cube until the wave reaches them,
-      // so no posBlend snapshot is needed.
-      const ROT_UNWIND_DURATION_4 = 2.5;
+      // Continue rotating at the same speed as Beat 3, gently decelerating to a
+      // stop over 60% of the beat duration. No forced traversal through awkward
+      // angles — the cube looks crisp throughout.
+      const decelerationT4 = Math.min(
+        1,
+        beat4Elapsed / (beatDurationRef.current * 0.6),
+      );
+      const rotSpeed4 = 0.00225 * (1 - decelerationT4 * decelerationT4);
+      const rotSpeedX4 = 0.00075 * (1 - decelerationT4 * decelerationT4);
+      shapeRotationRef.current += rotSpeed4;
+      shapeRotationXRef.current += rotSpeedX4;
 
-      // Smoothstep-decelerate the cube rotation from the Beat 3 entry angle to 0
-      // over ROT_UNWIND_DURATION_4 s so there is no sudden orientation snap.
-      let rotY4 = 0;
-      let rotX4 = 0;
-      if (beat4Elapsed < ROT_UNWIND_DURATION_4) {
-        const tSmooth = beat4Elapsed / ROT_UNWIND_DURATION_4;
-        const smooth = tSmooth * tSmooth * (3 - 2 * tSmooth); // smoothstep
-        rotY4 = beat4EntryRotYRef.current * (1 - smooth);
-        rotX4 = beat4EntryRotXRef.current * (1 - smooth);
-      }
+      const rotY4 = shapeRotationRef.current;
+      const rotX4 = shapeRotationXRef.current;
       const cosY4 = isFinite(rotY4) ? Math.cos(rotY4) : 1;
       const sinY4 = isFinite(rotY4) ? Math.sin(rotY4) : 0;
       const cosX4 = isFinite(rotX4) ? Math.cos(rotX4) : 1;
