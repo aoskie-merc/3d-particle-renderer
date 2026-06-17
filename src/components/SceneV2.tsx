@@ -196,7 +196,7 @@ function morphCubeTarget(
   // Oscillate between cube and sphere using a sine wave
   // morphPhase increases over time; sin goes -1→1, remap to 0→1
   const t = (Math.sin(morphPhase * Math.PI * 2) + 1) / 2; // 0→1→0→1...
-  const smooth = t * t * (3 - 2 * t); // smoothstep
+  const smooth = smoothstep(smoothstep(t)); // double smoothstep for extra ease
 
   const r = Math.sqrt(cubeX * cubeX + cubeY * cubeY + cubeZ * cubeZ);
   const sphereScale = r > 0 ? 0.57 / r : 0;
@@ -1358,18 +1358,16 @@ export default function SceneV2(props: ISceneV2Props) {
         }
       }
 
-      // Smooth damped lerp toward cube target — no spring overshoot
+      // Smooth damped lerp toward rotated cube target — uses p.targetX/Y/Z which
+      // already have the rotation matrix applied (computed in the loop above).
+      // Previously this lerped toward unrotated sortedCubeTargetsRef directly,
+      // which discarded the rotation and made the cube appear static in Beat 2.
       const lerpRate2 = 0.025;
       for (let i = 0; i < primaryCount; i++) {
         const p = particles[i];
-        const i3 = i * 3;
-        const tcx = sortedCubeTargetsRef.current[i3];
-        const tcy = sortedCubeTargetsRef.current[i3 + 1];
-        const tcz = sortedCubeTargetsRef.current[i3 + 2];
-
-        p.x += (tcx - p.x) * lerpRate2;
-        p.y += (tcy - p.y) * lerpRate2;
-        p.z += (tcz - p.z) * lerpRate2;
+        p.x += (p.targetX - p.x) * lerpRate2;
+        p.y += (p.targetY - p.y) * lerpRate2;
+        p.z += (p.targetZ - p.z) * lerpRate2;
         p.vx *= 0.85;
         p.vy *= 0.85;
         p.vz *= 0.85;
@@ -1411,8 +1409,9 @@ export default function SceneV2(props: ISceneV2Props) {
         beat3Elapsed / Math.max(beatDurationRef.current, 1),
       );
 
-      // Shape breathing: slow dreamy morph cycle; speed controlled by hintMeltSpeed slider
-      const breatheSpeed = 0.2 * hintMeltSpeedRef.current;
+      // Shape breathing: very slow dreamy morph cycle; speed controlled by hintMeltSpeed slider.
+      // 0.08 → one full oscillation ≈ 12.5 s at default hintMeltSpeed=1.0.
+      const breatheSpeed = 0.08 * hintMeltSpeedRef.current;
       const morphPhase = beat3Elapsed * breatheSpeed;
       // In the final 25%, steer targets back to cube so Beat 4 starts clean
       const returnToSquare =
