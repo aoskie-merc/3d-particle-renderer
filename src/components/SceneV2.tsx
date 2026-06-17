@@ -193,9 +193,10 @@ function morphCubeTarget(
   cubeZ: number,
   morphPhase: number,
 ): [number, number, number] {
-  // Oscillate between cube and sphere using a sine wave
-  // morphPhase increases over time; sin goes -1→1, remap to 0→1
-  const t = (Math.sin(morphPhase * Math.PI * 2) + 1) / 2; // 0→1→0→1...
+  // Oscillate between cube and sphere using a cosine wave
+  // morphPhase=0 → t=0 (pure cube), morphPhase=0.5 → t=1 (pure sphere)
+  // Ensures no jolt when Beat 3 starts (morphPhase always resets to 0 = cube)
+  const t = (1 - Math.cos(morphPhase * Math.PI * 2)) / 2; // 0→1→0→1...
   const smooth = smoothstep(smoothstep(t)); // double smoothstep for extra ease
 
   const r = Math.sqrt(cubeX * cubeX + cubeY * cubeY + cubeZ * cubeZ);
