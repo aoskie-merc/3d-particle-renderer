@@ -45,7 +45,7 @@ import type { BufferGeometry, Group } from "three";
 const TRANSITION_DURATION = 0.5; // seconds
 
 /** Auto-rotation speed for Beat 5 figure spin: one full revolution in ~17 seconds. */
-const AUTO_ROT_SPEED = (2 * Math.PI) / 17;
+const AUTO_ROT_SPEED = (2 * Math.PI) / 21.25;
 
 // ── Camera targets per beat ────────────────────────────────────────────────────
 
