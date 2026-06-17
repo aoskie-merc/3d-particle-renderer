@@ -1017,9 +1017,11 @@ export default function SceneV2(props: ISceneV2Props) {
       for (let i = 0; i < particles.length; i++) particles[i].size = 1;
     }
 
-    // Rebuild shape targets for beats 2/3 before setting targets so that beat 3
-    // can use the proximity-matched sorted array as its baseline (no crossing).
-    if (beat === 2 || beat === 3) {
+    // Rebuild shape targets only for Beat 2. Beat 3 must reuse the exact same
+    // sortedCubeTargetsRef that Beat 2 ended with — regenerating cube targets
+    // here would assign new random positions, causing a position jump on the
+    // first frame of Beat 3.
+    if (beat === 2) {
       cubeTargetsRef.current = generateCubeTargets(
         particles.length,
         cubeScaleRef.current,
@@ -1030,6 +1032,9 @@ export default function SceneV2(props: ISceneV2Props) {
         cubeTargetsRef.current,
       );
     }
+    // Beat 3: intentionally skip target rebuild — carry sortedCubeTargetsRef
+    // from Beat 2 so each particle's cube assignment is identical across the
+    // transition and no position snap occurs.
 
     // Set target positions for the incoming beat.
     // Beat 3 uses sorted (proximity-matched) targets so each particle's initial
@@ -1043,11 +1048,16 @@ export default function SceneV2(props: ISceneV2Props) {
     // One-time velocity dampen at beat entry: preserves momentum direction while
     // reducing magnitude for a smooth handoff without a ramp-up delay.
     // transitionDuration slider (0.5–4.0) maps to a dampening factor (0.2–0.8).
+    // Beat 3 (Form→Hint) uses a very gentle 0.9× factor so momentum from Beat 2
+    // carries over naturally — aggressive dampening would create a visible snap
+    // since cube targets are identical at transition (no position jump to hide it).
     const velocityDampenFactor =
-      0.2 +
-      ((Math.max(0.5, Math.min(transitionDurationRef.current, 4.0)) - 0.5) /
-        3.5) *
-        0.6;
+      beat === 3
+        ? 0.9
+        : 0.2 +
+          ((Math.max(0.5, Math.min(transitionDurationRef.current, 4.0)) - 0.5) /
+            3.5) *
+            0.6;
     const primaryCtForDampen =
       particles.length - Math.ceil(particles.length * 0.06);
     const MICRO_V_THRESHOLD = 0.0005;
@@ -1462,12 +1472,16 @@ export default function SceneV2(props: ISceneV2Props) {
         const baseY = sortedTargets3[i3 + 1];
         const baseZ = sortedTargets3[i3 + 2];
 
-        // Breathing morph: cycle cube→sphere→elongated→cube; blend back to cube in final 25%
+        // Breathing morph: cycle cube→sphere→cube; blend back to cube in final 25%.
+        // Phase offset +0.75 ensures morphPhase=0 maps to t=0 (pure cube) because
+        // sin(0.75 × 2π) = sin(3π/2) = −1 → t=(−1+1)/2=0. Without this offset,
+        // morphPhase=0 gives t=0.5 (halfway to sphere), causing a shape jump on the
+        // first frame of Beat 3 relative to Beat 2's pure-cube final state.
         const [morphTargX, morphTargY, morphTargZ] = morphCubeTarget(
           baseX,
           baseY,
           baseZ,
-          morphPhase,
+          morphPhase + 0.75,
         );
         const preMorphX = lerp(morphTargX, baseX, returnToSquare);
         const preMorphY = lerp(morphTargY, baseY, returnToSquare);
@@ -1481,8 +1495,13 @@ export default function SceneV2(props: ISceneV2Props) {
         const finalY3 = cosX3 * ry3 - sinX3 * rz3;
         const finalZ3 = sinX3 * ry3 + cosX3 * rz3;
 
-        // Smooth damped lerp toward morphed target — no spring overshoot
-        const lerpRate3 = 0.03;
+        // Smooth damped lerp toward morphed target — no spring overshoot.
+        // Ramp from Beat 2's lerp rate (0.025) to Beat 3's target rate (0.03)
+        // over the first 2 seconds so there is no speed surge on entry.
+        const LERP_RATE_END_2 = 0.025;
+        const LERP_RATE_TARGET_3 = 0.03;
+        const beat3Warmup = Math.min(1, beat3Elapsed / 2.0);
+        const lerpRate3 = lerp(LERP_RATE_END_2, LERP_RATE_TARGET_3, beat3Warmup);
         p.x += (finalX3 - p.x) * lerpRate3;
         p.y += (finalY3 - p.y) * lerpRate3;
         p.z += (finalZ3 - p.z) * lerpRate3;
