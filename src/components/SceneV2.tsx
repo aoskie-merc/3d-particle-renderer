@@ -627,6 +627,12 @@ export default function SceneV2(props: ISceneV2Props) {
   const dragStartRotYRef = useRef(0);
   /** Clock time when Beat 5 began (for settle delay). Reset to -1 when not in Beat 5. */
   const beat5StartTimeRef = useRef(-1);
+  /** Canvas Y position when the current drag started (for X-tilt). */
+  const dragStartYRef = useRef(0);
+  /** Current X-tilt offset (radians); lerps toward approvedRotXTargetRef each frame. */
+  const approvedRotXRef = useRef(0);
+  /** Target X-tilt offset (radians); tracks drag while active, snaps to 0 on release. */
+  const approvedRotXTargetRef = useRef(0);
 
   // ── Particle scatter-reset (exposed to parent via onReset prop) ───────────
 
@@ -1200,6 +1206,7 @@ export default function SceneV2(props: ISceneV2Props) {
       if (beatRef.current !== 5) return;
       isDraggingApprovedRef.current = true;
       dragStartXRef.current = e.clientX;
+      dragStartYRef.current = e.clientY;
       dragStartRotYRef.current = approvedRotYRef.current;
     };
 
@@ -1207,10 +1214,16 @@ export default function SceneV2(props: ISceneV2Props) {
       if (!isDraggingApprovedRef.current) return;
       approvedRotYRef.current =
         dragStartRotYRef.current + (e.clientX - dragStartXRef.current) * 0.01;
+      const MAX_TILT = Math.PI / 4;
+      approvedRotXTargetRef.current = Math.max(
+        -MAX_TILT,
+        Math.min(MAX_TILT, (e.clientY - dragStartYRef.current) * 0.01),
+      );
     };
 
     const onPointerUp = () => {
       isDraggingApprovedRef.current = false;
+      approvedRotXTargetRef.current = 0;
     };
 
     canvas.addEventListener("pointerdown", onPointerDown);
@@ -1254,11 +1267,20 @@ export default function SceneV2(props: ISceneV2Props) {
       }
     } else {
       approvedRotYRef.current = 0;
+      approvedRotXRef.current = 0;
+      approvedRotXTargetRef.current = 0;
       isDraggingApprovedRef.current = false;
       beat5StartTimeRef.current = -1;
     }
+    // Lerp X tilt toward target each frame (~1 s settling time at delta * 4)
+    approvedRotXRef.current +=
+      (approvedRotXTargetRef.current - approvedRotXRef.current) *
+      Math.min(1, delta * 4);
+
     const cosApproved = Math.cos(approvedRotYRef.current);
     const sinApproved = Math.sin(approvedRotYRef.current);
+    const cosApprovedX = Math.cos(approvedRotXRef.current);
+    const sinApprovedX = Math.sin(approvedRotXRef.current);
 
     // Advance transition
     const trans = transitionRef.current;
@@ -1344,11 +1366,14 @@ export default function SceneV2(props: ISceneV2Props) {
           p.targetY = Math.sin(bs.orbitAngle * 0.3) * 0.4;
           p.targetZ = Math.sin(bs.orbitAngle) * bs.orbitRadius;
         } else {
-          // Rotate home position around Y by the approved spin angle so surface
-          // particles on the figure track the figure as it spins.
-          p.targetX = p.homeX * cosApproved + p.homeZ * sinApproved;
-          p.targetY = p.homeY;
-          p.targetZ = -p.homeX * sinApproved + p.homeZ * cosApproved;
+          // Combined Y then X rotation so orbit surface particles track the
+          // spinning figure without deforming when X-tilt is applied.
+          const ox1 = p.homeX * cosApproved + p.homeZ * sinApproved;
+          const oy1 = p.homeY;
+          const oz1 = -p.homeX * sinApproved + p.homeZ * cosApproved;
+          p.targetX = ox1;
+          p.targetY = oy1 * cosApprovedX - oz1 * sinApprovedX;
+          p.targetZ = oy1 * sinApprovedX + oz1 * cosApprovedX;
         }
       }
     } else {
@@ -1843,10 +1868,13 @@ export default function SceneV2(props: ISceneV2Props) {
           }
           for (let i = 0; i < primaryCount; i++) {
             const p = particles[i];
-            // Rotate home position around Y so shimmer tracks the spinning figure.
-            const rhX = p.homeX * cosApproved + p.homeZ * sinApproved;
-            const rhY = p.homeY;
-            const rhZ = -p.homeX * sinApproved + p.homeZ * cosApproved;
+            // Combined Y then X rotation so shimmer tracks the spinning figure.
+            const rx1s = p.homeX * cosApproved + p.homeZ * sinApproved;
+            const ry1s = p.homeY;
+            const rz1s = -p.homeX * sinApproved + p.homeZ * cosApproved;
+            const rhX = rx1s;
+            const rhY = ry1s * cosApprovedX - rz1s * sinApprovedX;
+            const rhZ = ry1s * sinApprovedX + rz1s * cosApprovedX;
             const homeLen = Math.sqrt(rhX * rhX + rhY * rhY + rhZ * rhZ);
             if (homeLen > 1e-6) {
               const invLen = 1 / homeLen;
@@ -1865,10 +1893,13 @@ export default function SceneV2(props: ISceneV2Props) {
           const breatheOffset = Math.sin(elapsed * 0.8) * 0.04;
           for (let i = 0; i < primaryCount; i++) {
             const p = particles[i];
-            // Rotate home position around Y so breathe tracks the spinning figure.
-            const rhX = p.homeX * cosApproved + p.homeZ * sinApproved;
-            const rhY = p.homeY;
-            const rhZ = -p.homeX * sinApproved + p.homeZ * cosApproved;
+            // Combined Y then X rotation so breathe tracks the spinning figure.
+            const rx1b = p.homeX * cosApproved + p.homeZ * sinApproved;
+            const ry1b = p.homeY;
+            const rz1b = -p.homeX * sinApproved + p.homeZ * cosApproved;
+            const rhX = rx1b;
+            const rhY = ry1b * cosApprovedX - rz1b * sinApprovedX;
+            const rhZ = ry1b * sinApprovedX + rz1b * cosApprovedX;
             const homeLen = Math.sqrt(rhX * rhX + rhY * rhY + rhZ * rhZ);
             if (homeLen > 1e-6) {
               const invLen = 1 / homeLen;
@@ -1885,10 +1916,13 @@ export default function SceneV2(props: ISceneV2Props) {
           // Each particle has its own independent per-particle noise phase offset
           for (let i = 0; i < primaryCount; i++) {
             const p = particles[i];
-            // Rotate home position around Y so flow tracks the spinning figure.
-            const rhX = p.homeX * cosApproved + p.homeZ * sinApproved;
-            const rhY = p.homeY;
-            const rhZ = -p.homeX * sinApproved + p.homeZ * cosApproved;
+            // Combined Y then X rotation so flow tracks the spinning figure.
+            const rx1f = p.homeX * cosApproved + p.homeZ * sinApproved;
+            const ry1f = p.homeY;
+            const rz1f = -p.homeX * sinApproved + p.homeZ * cosApproved;
+            const rhX = rx1f;
+            const rhY = ry1f * cosApprovedX - rz1f * sinApprovedX;
+            const rhZ = ry1f * sinApprovedX + rz1f * cosApprovedX;
             const homeLen = Math.sqrt(rhX * rhX + rhY * rhY + rhZ * rhZ);
             if (homeLen > 1e-6) {
               const invLen = 1 / homeLen;
@@ -1906,9 +1940,12 @@ export default function SceneV2(props: ISceneV2Props) {
           // still: no offset, particles rest exactly on surface (rotated with figure)
           for (let i = 0; i < primaryCount; i++) {
             const p = particles[i];
-            p.targetX = p.homeX * cosApproved + p.homeZ * sinApproved;
-            p.targetY = p.homeY;
-            p.targetZ = -p.homeX * sinApproved + p.homeZ * cosApproved;
+            const sx1 = p.homeX * cosApproved + p.homeZ * sinApproved;
+            const sy1 = p.homeY;
+            const sz1 = -p.homeX * sinApproved + p.homeZ * cosApproved;
+            p.targetX = sx1;
+            p.targetY = sy1 * cosApprovedX - sz1 * sinApprovedX;
+            p.targetZ = sy1 * sinApprovedX + sz1 * cosApprovedX;
           }
         }
 
@@ -2140,10 +2177,15 @@ export default function SceneV2(props: ISceneV2Props) {
         y: 0.01,
         z: -0.19,
       };
-      // In Beat 5, add the approved spin offset so the skin mesh co-rotates with
-      // the swarm particle cloud.
+      // In Beat 5, add the approved spin/tilt offsets so the skin mesh co-rotates
+      // with the swarm particle cloud.
       const addRotY = currentBeat === 5 ? approvedRotYRef.current : 0;
-      figureGroupRef.current.rotation.set(rot.x, rot.y + addRotY, rot.z);
+      const addRotX = currentBeat === 5 ? approvedRotXRef.current : 0;
+      figureGroupRef.current.rotation.set(
+        rot.x + addRotX,
+        rot.y + addRotY,
+        rot.z,
+      );
       figureGroupRef.current.scale.setScalar(figureScaleRef.current ?? 1.0);
       // Shift the skin mesh group by the negative centroid so it aligns with
       // the centroid-adjusted swarm particle cloud (homeX/Y/Z are centered at
