@@ -1466,9 +1466,19 @@ export default function SceneV2(props: ISceneV2Props) {
       // 0.08 → one full oscillation ≈ 12.5 s at default hintMeltSpeed=1.0.
       const breatheSpeed = 0.08 * hintMeltSpeedRef.current;
       const morphPhase = beat3Elapsed * breatheSpeed;
-      // In the final 25%, steer targets back to cube so Beat 4 starts clean
+      // In the final 40%, steer targets back to cube so Beat 4 starts clean.
+      // Finishes at 90% so the last 10% is fully at cube — clean handoff to Beat 4.
+      const RETURN_START = 0.6;
+      const RETURN_END = 0.9;
       const returnToSquare =
-        beat3Progress > 0.75 ? smoothstep((beat3Progress - 0.75) / 0.25) : 0;
+        beat3Progress > RETURN_START
+          ? smoothstep(
+              Math.min(
+                1,
+                (beat3Progress - RETURN_START) / (RETURN_END - RETURN_START),
+              ),
+            )
+          : 0;
 
       const rotYSpeed3 = 0.00225 * dt * 60;
       const rotXSpeed3 = 0.00075 * dt * 60;
