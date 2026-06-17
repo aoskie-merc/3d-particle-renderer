@@ -294,6 +294,8 @@ export interface ISceneV2Props {
   figurePosY?: number;
   /** World-space Z offset applied to the figure centroid (default 0). */
   figurePosZ?: number;
+  /** Multiplier applied to particleSize for swarm/orbit particles (ParticleSystemV2). Default 2.0. */
+  swarmSizeMultiplier?: number;
 }
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
@@ -406,6 +408,7 @@ export default function SceneV2(props: ISceneV2Props) {
     figurePosX = 0,
     figurePosY = 0.4,
     figurePosZ = 0,
+    swarmSizeMultiplier = 2.0,
   } = props;
 
   // Keep stable refs to latest props so useFrame closures always read fresh values
@@ -2051,7 +2054,7 @@ export default function SceneV2(props: ISceneV2Props) {
           <ParticleSystemV2
             particles={particles}
             count={particleCount_ready}
-            particleSize={particleSize}
+            particleSize={particleSize * swarmSizeMultiplier}
             color={color}
             opacity={opacity}
             depthOpacityStrength={depthOpacityStrength}

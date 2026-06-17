@@ -375,6 +375,9 @@ export default function AppV2() {
   const [particleSize, setParticleSize] = useState(
     (saved?.particleSize as number) ?? 0.0033,
   );
+  const [swarmSizeMultiplier, setSwarmSizeMultiplier] = useState(
+    (saved?.swarmSizeMultiplier as number) ?? 2.0,
+  );
   const [opacity, setOpacity] = useState((saved?.opacity as number) ?? 0.8);
   const [swirlStrength, setSwirlStrength] = useState(
     (saved?.swirlStrength as number) ?? 0.001,
@@ -476,6 +479,7 @@ export default function AppV2() {
       beatDurations,
       densityLabel,
       particleSize,
+      swarmSizeMultiplier,
       opacity,
       swirlStrength,
       revealMode,
@@ -508,6 +512,7 @@ export default function AppV2() {
     beatDurations,
     densityLabel,
     particleSize,
+    swarmSizeMultiplier,
     opacity,
     swirlStrength,
     revealMode,
@@ -893,6 +898,7 @@ export default function AppV2() {
             particleCount={particleCount}
             skinParticleCount={skinParticleCount}
             particleSize={particleSize}
+            swarmSizeMultiplier={swarmSizeMultiplier}
             color={particleColor}
             opacity={opacity}
             swirlStrength={swirlStrength}
@@ -1203,6 +1209,29 @@ export default function AppV2() {
                     value={particleSize}
                     onChange={(e) =>
                       setParticleSize(parseFloat(e.target.value))
+                    }
+                  />
+                </div>
+                <div className={styles.controlRow}>
+                  <label className={styles.controlLabel}>
+                    <span>SWARM SIZE</span>
+                    <EditableSliderValue
+                      displayValue={`${swarmSizeMultiplier.toFixed(1)}×`}
+                      inputDefault={swarmSizeMultiplier}
+                      onCommit={setSwarmSizeMultiplier}
+                      min={0.5}
+                      max={5.0}
+                    />
+                  </label>
+                  <input
+                    className={styles.slider}
+                    type="range"
+                    min={0.5}
+                    max={5.0}
+                    step={0.1}
+                    value={swarmSizeMultiplier}
+                    onChange={(e) =>
+                      setSwarmSizeMultiplier(parseFloat(e.target.value))
                     }
                   />
                 </div>
