@@ -291,7 +291,13 @@
   display: flex;
   flex-direction: column;
   gap: 12px;
-  padding-bottom: 14px;
+  padding-bottom: 16px;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.08);
+  margin-bottom: 4px;
+}
+
+.accordionSection + .accordionSection {
+  margin-top: 4px;
 }
 
 /* ── Control rows ──────────────────────────────────────────────────────────── */
