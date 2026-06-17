@@ -1109,6 +1109,13 @@ export default function SceneV2(props: ISceneV2Props) {
       // home targets). The wave expands quickly enough to catch any hint particles
       // that were already near the figure in Beat 3.
       waveRadiusBeat4Ref.current = waveMaxDistRef.current * 0.02;
+      // Spatially remap cube→figure assignments so each particle's cube target is
+      // as close as possible to its figure home position. Top-of-figure particles
+      // start from the top of the cube, bottom from bottom, eliminating ugly
+      // diagonal crossing travel during the Reveal wave. Called here (Beat 3→4
+      // transition) rather than relying on earlier cached values so the remap is
+      // always fresh with the current home positions and cube geometry.
+      rebuildWaveAndSortedTargets();
     }
 
     transitionRef.current = {
@@ -1520,7 +1527,11 @@ export default function SceneV2(props: ISceneV2Props) {
         const LERP_RATE_END_2 = 0.025;
         const LERP_RATE_TARGET_3 = 0.03;
         const beat3Warmup = Math.min(1, beat3Elapsed / 2.0);
-        const lerpRate3 = lerp(LERP_RATE_END_2, LERP_RATE_TARGET_3, beat3Warmup);
+        const lerpRate3 = lerp(
+          LERP_RATE_END_2,
+          LERP_RATE_TARGET_3,
+          beat3Warmup,
+        );
         p.x += (finalX3 - p.x) * lerpRate3;
         p.y += (finalY3 - p.y) * lerpRate3;
         p.z += (finalZ3 - p.z) * lerpRate3;
@@ -1633,7 +1644,6 @@ export default function SceneV2(props: ISceneV2Props) {
           p.targetY = cubeY4 * (1 - t4) + p.homeY * t4;
           p.targetZ = cubeZ4 * (1 - t4) + p.homeZ * t4;
         }
-
       }
 
       // Only orbit particles use boid flocking in Beat 4 — primary particles must
