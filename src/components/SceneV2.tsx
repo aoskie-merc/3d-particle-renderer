@@ -1366,11 +1366,13 @@ export default function SceneV2(props: ISceneV2Props) {
           p.targetY = Math.sin(bs.orbitAngle * 0.3) * 0.4;
           p.targetZ = Math.sin(bs.orbitAngle) * bs.orbitRadius;
         } else {
-          // Combined Y then X rotation so orbit surface particles track the
+          // Combined Z then X rotation so orbit surface particles track the
           // spinning figure without deforming when X-tilt is applied.
-          const ox1 = p.homeX * cosApproved + p.homeZ * sinApproved;
-          const oy1 = p.homeY;
-          const oz1 = -p.homeX * sinApproved + p.homeZ * cosApproved;
+          // Spin is around world -Z (the figure's visual vertical after debugRotX ≈ -π/2),
+          // not world Y — world Y mixes homeX with homeZ (vertical height), causing squish.
+          const ox1 = p.homeX * cosApproved + p.homeY * sinApproved;
+          const oy1 = -p.homeX * sinApproved + p.homeY * cosApproved;
+          const oz1 = p.homeZ; // vertical axis is unchanged during spin
           p.targetX = ox1;
           p.targetY = oy1 * cosApprovedX - oz1 * sinApprovedX;
           p.targetZ = oy1 * sinApprovedX + oz1 * cosApprovedX;
@@ -1868,10 +1870,11 @@ export default function SceneV2(props: ISceneV2Props) {
           }
           for (let i = 0; i < primaryCount; i++) {
             const p = particles[i];
-            // Combined Y then X rotation so shimmer tracks the spinning figure.
-            const rx1s = p.homeX * cosApproved + p.homeZ * sinApproved;
-            const ry1s = p.homeY;
-            const rz1s = -p.homeX * sinApproved + p.homeZ * cosApproved;
+            // Combined Z then X rotation so shimmer tracks the spinning figure.
+            // Spin around world -Z (figure's visual vertical), not world Y.
+            const rx1s = p.homeX * cosApproved + p.homeY * sinApproved;
+            const ry1s = -p.homeX * sinApproved + p.homeY * cosApproved;
+            const rz1s = p.homeZ;
             const rhX = rx1s;
             const rhY = ry1s * cosApprovedX - rz1s * sinApprovedX;
             const rhZ = ry1s * sinApprovedX + rz1s * cosApprovedX;
@@ -1893,10 +1896,11 @@ export default function SceneV2(props: ISceneV2Props) {
           const breatheOffset = Math.sin(elapsed * 0.8) * 0.04;
           for (let i = 0; i < primaryCount; i++) {
             const p = particles[i];
-            // Combined Y then X rotation so breathe tracks the spinning figure.
-            const rx1b = p.homeX * cosApproved + p.homeZ * sinApproved;
-            const ry1b = p.homeY;
-            const rz1b = -p.homeX * sinApproved + p.homeZ * cosApproved;
+            // Combined Z then X rotation so breathe tracks the spinning figure.
+            // Spin around world -Z (figure's visual vertical), not world Y.
+            const rx1b = p.homeX * cosApproved + p.homeY * sinApproved;
+            const ry1b = -p.homeX * sinApproved + p.homeY * cosApproved;
+            const rz1b = p.homeZ;
             const rhX = rx1b;
             const rhY = ry1b * cosApprovedX - rz1b * sinApprovedX;
             const rhZ = ry1b * sinApprovedX + rz1b * cosApprovedX;
@@ -1916,10 +1920,11 @@ export default function SceneV2(props: ISceneV2Props) {
           // Each particle has its own independent per-particle noise phase offset
           for (let i = 0; i < primaryCount; i++) {
             const p = particles[i];
-            // Combined Y then X rotation so flow tracks the spinning figure.
-            const rx1f = p.homeX * cosApproved + p.homeZ * sinApproved;
-            const ry1f = p.homeY;
-            const rz1f = -p.homeX * sinApproved + p.homeZ * cosApproved;
+            // Combined Z then X rotation so flow tracks the spinning figure.
+            // Spin around world -Z (figure's visual vertical), not world Y.
+            const rx1f = p.homeX * cosApproved + p.homeY * sinApproved;
+            const ry1f = -p.homeX * sinApproved + p.homeY * cosApproved;
+            const rz1f = p.homeZ;
             const rhX = rx1f;
             const rhY = ry1f * cosApprovedX - rz1f * sinApprovedX;
             const rhZ = ry1f * sinApprovedX + rz1f * cosApprovedX;
@@ -1940,28 +1945,27 @@ export default function SceneV2(props: ISceneV2Props) {
           // still: no offset, particles rest exactly on surface (rotated with figure)
           for (let i = 0; i < primaryCount; i++) {
             const p = particles[i];
-            const sx1 = p.homeX * cosApproved + p.homeZ * sinApproved;
-            const sy1 = p.homeY;
-            const sz1 = -p.homeX * sinApproved + p.homeZ * cosApproved;
+            // Spin around world -Z (figure's visual vertical), not world Y.
+            const sx1 = p.homeX * cosApproved + p.homeY * sinApproved;
+            const sy1 = -p.homeX * sinApproved + p.homeY * cosApproved;
+            const sz1 = p.homeZ;
             p.targetX = sx1;
             p.targetY = sy1 * cosApprovedX - sz1 * sinApprovedX;
             p.targetZ = sy1 * sinApprovedX + sz1 * cosApprovedX;
           }
         }
 
-        const lerpSpeed5 = getLerpSpeedForBeat(5);
-        const alpha5 =
-          (1 - Math.exp(-lerpSpeed5 * dt)) *
-          lerpWeightRef.current *
-          beatTransitionRef.current;
+        // Snap particles directly to their rotated surface targets so the figure
+        // is fully rigid during drag rotation with zero deformation lag. Velocity
+        // is zeroed to prevent any residual drift from disrupting the rigid lock.
         for (let i = 0; i < primaryCount; i++) {
           const p = particles[i];
-          p.x += (p.targetX - p.x) * alpha5;
-          p.y += (p.targetY - p.y) * alpha5;
-          p.z += (p.targetZ - p.z) * alpha5;
-          p.vx *= 0.45;
-          p.vy *= 0.45;
-          p.vz *= 0.45;
+          p.x = p.targetX;
+          p.y = p.targetY;
+          p.z = p.targetZ;
+          p.vx = 0;
+          p.vy = 0;
+          p.vz = 0;
         }
 
         // ── Depth sizing: scale p.size per surface particle based on camera angle ──
@@ -2128,19 +2132,22 @@ export default function SceneV2(props: ISceneV2Props) {
       // slower gentle alpha for smooth orbital motion.
       const orbitAlphaElse = (1 - Math.exp(-0.3 * dt)) * 0.05;
       if (currentBeat === 5) {
-        const alpha5Orbit =
-          (1 - Math.exp(-getLerpSpeedForBeat(5) * dt)) *
-          lerpWeightRef.current *
-          beatTransitionRef.current;
         const breakaways = breakawayRef.current;
         for (let i = primaryCount; i < n; i++) {
           const p = particles[i];
           const bi = i - primaryCount;
           const isActive = bi < breakaways.length && breakaways[bi].active;
-          const alpha = isActive ? orbitAlphaElse : alpha5Orbit;
-          p.x += (p.targetX - p.x) * alpha;
-          p.y += (p.targetY - p.y) * alpha;
-          p.z += (p.targetZ - p.z) * alpha;
+          if (isActive) {
+            // Actively orbiting: smooth lerp for graceful orbital arc
+            p.x += (p.targetX - p.x) * orbitAlphaElse;
+            p.y += (p.targetY - p.y) * orbitAlphaElse;
+            p.z += (p.targetZ - p.z) * orbitAlphaElse;
+          } else {
+            // Surface-sitting: snap directly to rotated surface target, fully rigid
+            p.x = p.targetX;
+            p.y = p.targetY;
+            p.z = p.targetZ;
+          }
         }
       } else {
         for (let i = primaryCount; i < n; i++) {
