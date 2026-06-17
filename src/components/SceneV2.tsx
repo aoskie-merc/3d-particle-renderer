@@ -1467,9 +1467,9 @@ export default function SceneV2(props: ISceneV2Props) {
       const breatheSpeed = 0.08 * hintMeltSpeedRef.current;
       const morphPhase = beat3Elapsed * breatheSpeed;
       // In the final 40%, steer targets back to cube so Beat 4 starts clean.
-      // Finishes at 90% so the last 10% is fully at cube — clean handoff to Beat 4.
+      // Finishes at 85% so the last 15% is fully at cube — clean handoff to Beat 4.
       const RETURN_START = 0.6;
-      const RETURN_END = 0.9;
+      const RETURN_END = 0.85;
       const returnToSquare =
         beat3Progress > RETURN_START
           ? smoothstep(
@@ -1493,11 +1493,15 @@ export default function SceneV2(props: ISceneV2Props) {
         shapeRotationRef.current += rotYSpeed3 * (1 - settleSmooth3 * 0.5);
         shapeRotationXRef.current += rotXSpeed3 * (1 - settleSmooth3 * 0.5);
 
-        // Steer toward nearest multiple of 2π (feels like a natural full-rotation landing)
+        // Steer toward nearest multiple of π/2 (90°) — a cube has 4-fold symmetry so
+        // 0°, 90°, 180°, 270° are all face-on. Targeting π/2 multiples halves the
+        // worst-case settling distance (from 180° to 45°) and ensures Beat 4 never
+        // starts with the cube edge-on (45°/135°/225°/315°), which caused the
+        // elongated-slab artifact when posBlend4 held those diagonal positions for 1.5s.
         const nearestTargetY =
-          Math.round(shapeRotationRef.current / (Math.PI * 2)) * Math.PI * 2;
+          Math.round(shapeRotationRef.current / (Math.PI / 2)) * (Math.PI / 2);
         const nearestTargetX =
-          Math.round(shapeRotationXRef.current / (Math.PI * 2)) * Math.PI * 2;
+          Math.round(shapeRotationXRef.current / (Math.PI / 2)) * (Math.PI / 2);
         shapeRotationRef.current +=
           (nearestTargetY - shapeRotationRef.current) * settleSmooth3 * 0.08;
         shapeRotationXRef.current +=
