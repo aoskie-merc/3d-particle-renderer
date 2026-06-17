@@ -9,8 +9,6 @@ import type {
   TDepthOpacityMode,
   THintShape,
   THintStyle,
-  THintClarity,
-  THintMotionStyle,
 } from "./types";
 import SceneV2 from "./components/SceneV2";
 import styles from "./AppV2.module.css";
@@ -377,13 +375,10 @@ export default function AppV2() {
     useState<TDepthOpacityMode>("off");
   const [cubeScale, setCubeScale] = useState(1.5);
   const [hintCycles, setHintCycles] = useState(3);
-  const [hintClarity, setHintClarity] = useState<THintClarity>("whisper");
   const [hintStyle, setHintStyle] = useState<THintStyle>("bulge");
   const [hintSpread, setHintSpread] = useState(0.54);
   const [hintShape, setHintShape] = useState<THintShape>("blob");
-  const [hintMotionStyle, setHintMotionStyle] =
-    useState<THintMotionStyle>("searching");
-  const [hintSweepSpeed, setHintSweepSpeed] = useState(1.0);
+  const [hintMeltSpeed, setHintMeltSpeed] = useState(1.0);
   const [revealStages, setRevealStages] = useState(4);
   const [waveSpeed, setWaveSpeed] = useState(1.5);
   const [transitionDuration, setTransitionDuration] = useState(2.25);
@@ -780,12 +775,10 @@ export default function AppV2() {
             figureScale={figureScale}
             cubeScale={cubeScale}
             hintCycles={hintCycles}
-            hintClarity={hintClarity}
             hintStyle={hintStyle}
             hintSpread={hintSpread}
             hintShape={hintShape}
-            hintMotionStyle={hintMotionStyle}
-            hintSweepSpeed={hintSweepSpeed}
+            hintMeltSpeed={hintMeltSpeed}
             revealStages={revealStages}
             waveSpeed={waveSpeed}
             transitionDuration={transitionDuration}
@@ -1319,107 +1312,12 @@ export default function AppV2() {
                   </div>
                 </div>
                 <div className={styles.controlRow}>
-                  <span className={styles.controlLabelText}>Hint Clarity</span>
-                  <div className={styles.segmented}>
-                    {(["whisper", "subtle", "suggestive"] as const).map((m) => (
-                      <button
-                        key={m}
-                        className={`${styles.segmentBtn} ${hintClarity === m ? styles.segmentBtnActive : ""}`}
-                        onClick={() => setHintClarity(m)}
-                      >
-                        {m === "whisper"
-                          ? "Whisper"
-                          : m === "subtle"
-                            ? "Subtle"
-                            : "Suggestive"}
-                      </button>
-                    ))}
-                  </div>
-                </div>
-                <div className={styles.controlRow}>
-                  <span className={styles.controlLabelText}>Hint Style</span>
-                  <div className={styles.segmented}>
-                    {(["bulge", "pulse", "sweep"] as const).map((m) => (
-                      <button
-                        key={m}
-                        className={`${styles.segmentBtn} ${hintStyle === m ? styles.segmentBtnActive : ""}`}
-                        onClick={() => setHintStyle(m)}
-                      >
-                        {m === "bulge"
-                          ? "Bulge"
-                          : m === "pulse"
-                            ? "Pulse"
-                            : "Sweep"}
-                      </button>
-                    ))}
-                  </div>
-                </div>
-                <div className={styles.controlRow}>
                   <label className={styles.controlLabel}>
-                    <span>Hint Spread</span>
+                    <span>Melt Speed</span>
                     <EditableSliderValue
-                      displayValue={hintSpread.toFixed(2)}
-                      inputDefault={hintSpread}
-                      onCommit={setHintSpread}
-                      min={0.2}
-                      max={1.0}
-                    />
-                  </label>
-                  <input
-                    className={styles.slider}
-                    type="range"
-                    min={0.2}
-                    max={1.0}
-                    step={0.05}
-                    value={hintSpread}
-                    onChange={(e) => setHintSpread(parseFloat(e.target.value))}
-                  />
-                </div>
-                <div className={styles.controlRow}>
-                  <span className={styles.controlLabelText}>Hint Shape</span>
-                  <div className={styles.segmented}>
-                    {(["blob", "wedge", "contour"] as const).map((m) => (
-                      <button
-                        key={m}
-                        className={`${styles.segmentBtn} ${hintShape === m ? styles.segmentBtnActive : ""}`}
-                        onClick={() => setHintShape(m)}
-                      >
-                        {m === "blob"
-                          ? "Blob"
-                          : m === "wedge"
-                            ? "Wedge"
-                            : "Contour"}
-                      </button>
-                    ))}
-                  </div>
-                </div>
-                <div className={styles.controlRow}>
-                  <span className={styles.controlLabelText}>Hint Motion</span>
-                  <div className={styles.segmented}>
-                    {(["searching", "breathing", "melting"] as const).map(
-                      (m) => (
-                        <button
-                          key={m}
-                          className={`${styles.segmentBtn} ${hintMotionStyle === m ? styles.segmentBtnActive : ""}`}
-                          onClick={() => setHintMotionStyle(m)}
-                        >
-                          {m === "searching"
-                            ? "Searching"
-                            : m === "breathing"
-                              ? "Breathing"
-                              : "Melting"}
-                        </button>
-                      ),
-                    )}
-                  </div>
-                </div>
-                <div className={styles.controlRow}>
-                  <label className={styles.controlLabel}>
-                    <span>Sweep Speed</span>
-                    <EditableSliderValue
-                      displayValue={hintSweepSpeed.toFixed(1)}
-                      inputDefault={hintSweepSpeed}
-                      onCommit={setHintSweepSpeed}
+                      displayValue={hintMeltSpeed.toFixed(1)}
+                      inputDefault={hintMeltSpeed}
+                      onCommit={setHintMeltSpeed}
                       min={0.2}
                       max={3.0}
                     />
@@ -1430,9 +1328,9 @@ export default function AppV2() {
                     min={0.2}
                     max={3.0}
                     step={0.1}
-                    value={hintSweepSpeed}
+                    value={hintMeltSpeed}
                     onChange={(e) =>
-                      setHintSweepSpeed(parseFloat(e.target.value))
+                      setHintMeltSpeed(parseFloat(e.target.value))
                     }
                   />
                 </div>

@@ -1367,8 +1367,10 @@ export default function SceneV2(props: ISceneV2Props) {
         const noiseAmp =
           meltProgress * effectiveBlobRadius * (0.3 + 0.7 * cornerFactor);
         const noiseX = Math.sin(noisePhase + beat3Elapsed * 0.3) * noiseAmp;
-        const noiseY = Math.cos(noisePhase * 1.3 + beat3Elapsed * 0.2) * noiseAmp;
-        const noiseZ = Math.sin(noisePhase * 0.7 + beat3Elapsed * 0.4) * noiseAmp;
+        const noiseY =
+          Math.cos(noisePhase * 1.3 + beat3Elapsed * 0.2) * noiseAmp;
+        const noiseZ =
+          Math.sin(noisePhase * 0.7 + beat3Elapsed * 0.4) * noiseAmp;
 
         // Project cube position outward to blob sphere surface, then add noise
         const cubeLen =
