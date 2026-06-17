@@ -50,11 +50,11 @@ const TRANSITION_DURATION = 0.5; // seconds
 
 export const CAMERA_POSITIONS: Record<TBeat, [number, number, number]> = {
   0: [0, 0, 6], // Beat 0: facing the XY ring, looking through the donut hole
-  1: [-0.8, 0.4, 4.5], // Beat 1: pulled back to give particles room to swirl in
-  2: [-1.0, 0.3, 3.8], // Beat 2: medium distance, 3/4 angle for geometric shape
-  3: [-1.0, 0.3, 3.6], // Beat 3: slightly closer as shape hints at figure
-  4: [-1.2, 0.3, 3.2], // Beat 4: close, intimate reveal angle matching v1
-  5: [-1.2, 0.3, 3.2], // Beat 5 (Approved): same as v1 framing
+  1: [-0.8, 0.8, 4.5], // Beat 1: pulled back to give particles room to swirl in
+  2: [-1.0, 0.8, 3.8], // Beat 2: medium distance, 3/4 angle for geometric shape
+  3: [-1.0, 0.8, 3.6], // Beat 3: slightly closer as shape hints at figure
+  4: [-1.2, 0.8, 3.2], // Beat 4: close, intimate reveal angle matching v1
+  5: [-1.2, 0.8, 3.2], // Beat 5 (Approved): same as v1 framing
 };
 
 // ── Helpers ────────────────────────────────────────────────────────────────────
@@ -1110,7 +1110,7 @@ export default function SceneV2(props: ISceneV2Props) {
 
   useEffect(() => {
     if (!orbitEnabled || !orbitControlsRef.current) return;
-    orbitControlsRef.current.target.set(0, 0.5, 0);
+    orbitControlsRef.current.target.set(0, 0.8, 0);
   }, [orbitEnabled]);
 
   // ── Per-frame simulation ──────────────────────────────────────────────────
@@ -2037,7 +2037,7 @@ export default function SceneV2(props: ISceneV2Props) {
         camTargetRef.current.set(tx, ty, tz);
         state.camera.position.lerp(camTargetRef.current, 0.02);
         // Beat 0: look straight at the ring center (Y=0); other beats: slight upward offset
-        state.camera.lookAt(0, currentBeat === 0 ? 0 : 0.5, 0);
+        state.camera.lookAt(0, currentBeat === 0 ? 0 : 0.8, 0);
       }
     }
 
