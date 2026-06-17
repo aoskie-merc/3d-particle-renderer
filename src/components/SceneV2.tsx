@@ -173,6 +173,64 @@ function cubicEase(t: number): number {
   return t * t * (3 - 2 * t);
 }
 
+function smoothstep(t: number): number {
+  const c = Math.max(0, Math.min(1, t));
+  return c * c * (3 - 2 * c);
+}
+
+function lerp(a: number, b: number, t: number): number {
+  return a + (b - a) * t;
+}
+
+/**
+ * Returns a morphed particle target that cycles continuously through
+ * cube → sphere → elongated cube → cube as morphPhase (cycles) advances.
+ * morphPhase is driven by beat3Elapsed * breatheSpeed for a slow, dreamy effect.
+ */
+function morphCubeTarget(
+  cubeX: number,
+  cubeY: number,
+  cubeZ: number,
+  morphPhase: number,
+): [number, number, number] {
+  const cycle = morphPhase % 1;
+
+  const r = Math.sqrt(cubeX * cubeX + cubeY * cubeY + cubeZ * cubeZ);
+  const sphereX = r > 0 ? (cubeX / r) * 0.57 : 0;
+  const sphereY = r > 0 ? (cubeY / r) * 0.57 : 0;
+  const sphereZ = r > 0 ? (cubeZ / r) * 0.57 : 0;
+
+  const elongX = cubeX * 0.6;
+  const elongY = cubeY * 1.6;
+  const elongZ = cubeZ * 0.6;
+
+  // Sequence: cube(0) → sphere(0.25) → elongated(0.5) → cube(0.75) → cube(1.0)
+  if (cycle < 0.25) {
+    const t = smoothstep(cycle / 0.25);
+    return [
+      lerp(cubeX, sphereX, t),
+      lerp(cubeY, sphereY, t),
+      lerp(cubeZ, sphereZ, t),
+    ];
+  } else if (cycle < 0.5) {
+    const t = smoothstep((cycle - 0.25) / 0.25);
+    return [
+      lerp(sphereX, elongX, t),
+      lerp(sphereY, elongY, t),
+      lerp(sphereZ, elongZ, t),
+    ];
+  } else if (cycle < 0.75) {
+    const t = smoothstep((cycle - 0.5) / 0.25);
+    return [
+      lerp(elongX, cubeX, t),
+      lerp(elongY, cubeY, t),
+      lerp(elongZ, cubeZ, t),
+    ];
+  } else {
+    return [cubeX, cubeY, cubeZ];
+  }
+}
+
 // ── Types ─────────────────────────────────────────────────────────────────────
 
 interface ITransitionState {
@@ -1019,12 +1077,16 @@ export default function SceneV2(props: ISceneV2Props) {
       if (Math.abs(particles[i].vz) < MICRO_V_THRESHOLD) particles[i].vz = 0;
     }
 
+    // Start cube rotation in Swirl In so it arrives at Form already spinning
+    if (beat === 1) {
+      shapeRotationRef.current = Math.PI / 5; // 36° — matches Beat 2's initial angle
+      shapeRotationXRef.current = Math.PI / 8; // 22.5°
+    }
+
     // Reset cascade timer when entering beat 2
     if (beat === 2) {
       beat2StartTimeRef.current = -1; // initialized on first useFrame tick
-      // Start at a dramatic angle so cube is immediately recognizable as 3D
-      shapeRotationRef.current = Math.PI / 5; // 36° — clear diagonal view
-      shapeRotationXRef.current = Math.PI / 8; // 22.5° — visible top face
+      // Rotation carries over from Beat 1 — no hard-reset
     }
 
     // Reset Beat 3 melt state
@@ -1351,7 +1413,11 @@ export default function SceneV2(props: ISceneV2Props) {
         p.z += (p.targetZ - p.z) * orbitAlpha2;
       }
     } else if (currentBeat === 3) {
-      // ── Beat 3: Hint — rotating cube + swarm drawing inward ───────────────
+      // ---- HINT BEAT (Beat 3) ----
+      // Shape: slow breathing morph cube→sphere→elongated→cube
+      // Rotation: continuous, guided toward clean angle in final 25%
+      // Swarm: tightening orbit
+      // Handoff: returnToSquare blends back to cube before Beat 4
 
       if (beat3StartTimeRef.current < 0) beat3StartTimeRef.current = elapsed;
       const beat3Elapsed = elapsed - beat3StartTimeRef.current;
@@ -1361,6 +1427,13 @@ export default function SceneV2(props: ISceneV2Props) {
         1,
         beat3Elapsed / Math.max(beatDurationRef.current, 1),
       );
+
+      // Shape breathing: slow dreamy morph cycle; speed controlled by hintMeltSpeed slider
+      const breatheSpeed = 0.2 * hintMeltSpeedRef.current;
+      const morphPhase = beat3Elapsed * breatheSpeed;
+      // In the final 25%, steer targets back to cube so Beat 4 starts clean
+      const returnToSquare =
+        beat3Progress > 0.75 ? smoothstep((beat3Progress - 0.75) / 0.25) : 0;
 
       const rotYSpeed3 = 0.003 * dt * 60;
       const rotXSpeed3 = 0.001 * dt * 60;
@@ -1406,15 +1479,26 @@ export default function SceneV2(props: ISceneV2Props) {
         const baseY = sortedTargets3[i3 + 1];
         const baseZ = sortedTargets3[i3 + 2];
 
-        // Rotate to current cube spin angle
-        const rx3 = cosY3 * baseX - sinY3 * baseZ;
-        const ry3 = baseY;
-        const rz3 = sinY3 * baseX + cosY3 * baseZ;
+        // Breathing morph: cycle cube→sphere→elongated→cube; blend back to cube in final 25%
+        const [morphTargX, morphTargY, morphTargZ] = morphCubeTarget(
+          baseX,
+          baseY,
+          baseZ,
+          morphPhase,
+        );
+        const preMorphX = lerp(morphTargX, baseX, returnToSquare);
+        const preMorphY = lerp(morphTargY, baseY, returnToSquare);
+        const preMorphZ = lerp(morphTargZ, baseZ, returnToSquare);
+
+        // Rotate morphed target to current cube spin angle
+        const rx3 = cosY3 * preMorphX - sinY3 * preMorphZ;
+        const ry3 = preMorphY;
+        const rz3 = sinY3 * preMorphX + cosY3 * preMorphZ;
         const finalX3 = rx3;
         const finalY3 = cosX3 * ry3 - sinX3 * rz3;
         const finalZ3 = sinX3 * ry3 + cosX3 * rz3;
 
-        // Smooth damped lerp toward crisp cube target — no spring overshoot
+        // Smooth damped lerp toward morphed target — no spring overshoot
         const lerpRate3 = 0.03;
         p.x += (finalX3 - p.x) * lerpRate3;
         p.y += (finalY3 - p.y) * lerpRate3;
@@ -1742,6 +1826,10 @@ export default function SceneV2(props: ISceneV2Props) {
           }
         }
       } else if (currentBeat === 1) {
+        // Gentle cube rotation starts in Swirl In — 70% of Beat 2 speed for continuity
+        shapeRotationRef.current += 0.003 * 0.7 * dt * 60;
+        shapeRotationXRef.current += 0.001 * 0.7 * dt * 60;
+
         // Beat 1: lerp primary particles toward the halfway point (50% ring, 50% shape).
         // Scale speed so the lerp reaches ~99% in beatDuration seconds.
         // beatTransitionRef ramps from 0→1 so at beat entry particles continue their
