@@ -250,6 +250,12 @@ export interface ISceneV2Props {
   transitionDuration?: number;
   /** Multiplier on how fast meltProgress advances during Beat 3 (0.2–3.0, default 1.0). */
   hintMeltSpeed?: number;
+  /** World-space X offset applied to the figure centroid (default 0). */
+  figurePosX?: number;
+  /** World-space Y lift applied to the figure centroid (default 0.9). */
+  figurePosY?: number;
+  /** World-space Z offset applied to the figure centroid (default 0). */
+  figurePosZ?: number;
 }
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
@@ -261,20 +267,24 @@ export interface ISceneV2Props {
  * stay in sync with the visually-rotated figure mesh.
  *
  * After transforming, the centroid of all home positions is subtracted so the
- * figure is always centered at the world origin. This prevents a visual shift
- * when particles transition from cube targets (centered at origin) to figure
- * targets — the "center of mass" of the figure particle cloud matches the cube.
+ * figure is always centered at the world origin, then the caller-supplied
+ * position offsets (yLift, posX, posZ) are added so the figure can be freely
+ * repositioned in the viewport.
  *
- * Returns the centroid that was subtracted (in world space). The caller uses
- * this to apply an equal-and-opposite position offset to figureGroupRef so
- * the SkinParticleSystem (which renders the raw uncentered mesh positions) stays
- * visually co-located with the centroid-adjusted swarm particle cloud.
+ * Returns the centroid that was subtracted plus position offsets factored in
+ * (in world space). The caller uses this to apply an equal-and-opposite
+ * position offset to figureGroupRef so the SkinParticleSystem (which renders
+ * the raw uncentered mesh positions) stays visually co-located with the
+ * centroid-adjusted swarm particle cloud.
  */
 function applyRotationToHomes(
   particles: IParticleV2[],
   rawPos: Float32Array,
   rotation: { x: number; y: number; z: number },
   scale: number,
+  yLift: number,
+  posX = 0,
+  posZ = 0,
 ): { x: number; y: number; z: number } {
   const matrix = new Matrix4();
   matrix.makeRotationFromEuler(new Euler(rotation.x, rotation.y, rotation.z));
@@ -309,15 +319,15 @@ function applyRotationToHomes(
   cx /= written;
   cy /= written;
   cz /= written;
-  // Lift the figure upward so the full body is visible in frame
-  // (centroid is near the waist; without a lift, lower body is clipped)
-  const FIGURE_Y_LIFT = 0.9;
+  // Apply yLift so the full body is visible in frame, plus X/Z position offsets.
+  // Returning (cx - posX, cy - yLift, cz - posZ) lets the caller derive the
+  // equal-and-opposite skin mesh offset so both swarm and skin stay co-located.
   for (let i = 0; i < written; i++) {
-    particles[i].homeX -= cx;
-    particles[i].homeY -= cy - FIGURE_Y_LIFT;
-    particles[i].homeZ -= cz;
+    particles[i].homeX -= cx - posX;
+    particles[i].homeY -= cy - yLift;
+    particles[i].homeZ -= cz - posZ;
   }
-  return { x: cx, y: cy - FIGURE_Y_LIFT, z: cz };
+  return { x: cx - posX, y: cy - yLift, z: cz - posZ };
 }
 
 // ── Component ─────────────────────────────────────────────────────────────────
@@ -355,6 +365,9 @@ export default function SceneV2(props: ISceneV2Props) {
     waveSpeed = 1.5,
     transitionDuration = 2.25,
     hintMeltSpeed = 1.0,
+    figurePosX = 0,
+    figurePosY = 0.9,
+    figurePosZ = 0,
   } = props;
 
   // Keep stable refs to latest props so useFrame closures always read fresh values
@@ -537,6 +550,12 @@ export default function SceneV2(props: ISceneV2Props) {
   debugMeshRotationRef.current = debugMeshRotation;
   const figureScaleRef = useRef(figureScale);
   figureScaleRef.current = figureScale;
+  const figurePosXRef = useRef(figurePosX);
+  figurePosXRef.current = figurePosX;
+  const figurePosYRef = useRef(figurePosY);
+  figurePosYRef.current = figurePosY;
+  const figurePosZRef = useRef(figurePosZ);
+  figurePosZRef.current = figurePosZ;
   const groupRef = useRef<Group | null>(null);
   /** Separate ref for the figure mesh group so debugMeshRotation only affects the figure, not particles. */
   const figureGroupRef = useRef<Group | null>(null);
@@ -826,6 +845,9 @@ export default function SceneV2(props: ISceneV2Props) {
       rawHomePositionsRef.current,
       rot,
       figureScaleRef.current,
+      figurePosYRef.current,
+      figurePosXRef.current,
+      figurePosZRef.current,
     );
     // Keep figureGroupRef offset in sync so the skin mesh aligns with the
     // centroid-adjusted swarm particle cloud.
@@ -888,7 +910,15 @@ export default function SceneV2(props: ISceneV2Props) {
     if (particles.length === 0 || rawPos.length === 0) return;
 
     const rot = debugMeshRotation ?? { x: -1.59, y: 0.01, z: -0.19 };
-    const centroid = applyRotationToHomes(particles, rawPos, rot, figureScale);
+    const centroid = applyRotationToHomes(
+      particles,
+      rawPos,
+      rot,
+      figureScale,
+      figurePosY,
+      figurePosX,
+      figurePosZ,
+    );
     // Keep figureGroupRef offset in sync so the skin mesh aligns with the
     // centroid-adjusted swarm particle cloud.
     figureOffsetRef.current.x = -centroid.x;
@@ -918,6 +948,9 @@ export default function SceneV2(props: ISceneV2Props) {
     debugMeshRotation?.y,
     debugMeshRotation?.z,
     figureScale,
+    figurePosX,
+    figurePosY,
+    figurePosZ,
     particleCount_ready,
   ]);
 
@@ -1313,14 +1346,9 @@ export default function SceneV2(props: ISceneV2Props) {
           Math.max(beatDurationRef.current, 1),
       );
 
-      // Blob radius grows as the cube melts (inscribed sphere → 60% larger)
-      const cubeRadius = cubeScaleRef.current * 0.75;
-      const blobRadius = cubeRadius * (1.0 + meltProgress * 0.6);
-
       // Slow global pulse — blob gently breathes as it melts
       const globalPulse =
-        1.0 + Math.sin(beat3Elapsed * 0.8) * 0.05 * meltProgress;
-      const effectiveBlobRadius = blobRadius * globalPulse;
+        1.0 + Math.sin(beat3Elapsed * 0.8) * 0.03 * meltProgress;
 
       // Cube continues to rotate (same as Beat 2)
       shapeRotationRef.current += 0.001 * dt * 60;
@@ -1338,9 +1366,6 @@ export default function SceneV2(props: ISceneV2Props) {
       // Approx distance from origin to a cube corner
       const maxDist3 = cubeScaleRef.current * 0.87;
 
-      const springK3 = 0.025;
-      const damping3 = 0.88;
-
       for (let i = 0; i < primaryCount; i++) {
         const i3 = i * 3;
         const p = particles[i];
@@ -1356,39 +1381,44 @@ export default function SceneV2(props: ISceneV2Props) {
         const cubeY = cosX3 * ry3 - sinX3 * rz3;
         const cubeZ = sinX3 * ry3 + cosX3 * rz3;
 
-        // Particles farther from origin (corners) melt earlier/faster
+        // Corners deform more than face centers
         const distFromOrigin = Math.sqrt(
           cubeX * cubeX + cubeY * cubeY + cubeZ * cubeZ,
         );
-        const cornerFactor = distFromOrigin / Math.max(maxDist3, 0.001);
+        const cornerFactor = Math.min(
+          1,
+          distFromOrigin / Math.max(maxDist3, 0.001),
+        );
+        const cornerScale = 0.5 + 0.5 * cornerFactor;
 
-        // Per-particle stable noise offset — golden angle for variety, no flickering
+        // Per-particle bounded organic noise — max 18% of cube scale at full melt
         const noisePhase = i * 2.399;
-        const noiseAmp =
-          meltProgress * effectiveBlobRadius * (0.3 + 0.7 * cornerFactor);
-        const noiseX = Math.sin(noisePhase + beat3Elapsed * 0.3) * noiseAmp;
+        const maxNoiseAmp =
+          cubeScaleRef.current * 0.18 * meltProgress * globalPulse;
+        const noiseX =
+          Math.sin(noisePhase + beat3Elapsed * 0.25) *
+          maxNoiseAmp *
+          cornerScale;
         const noiseY =
-          Math.cos(noisePhase * 1.3 + beat3Elapsed * 0.2) * noiseAmp;
+          Math.cos(noisePhase * 1.3 + beat3Elapsed * 0.18) *
+          maxNoiseAmp *
+          cornerScale;
         const noiseZ =
-          Math.sin(noisePhase * 0.7 + beat3Elapsed * 0.4) * noiseAmp;
+          Math.sin(noisePhase * 0.7 + beat3Elapsed * 0.32) *
+          maxNoiseAmp *
+          cornerScale;
 
-        // Project cube position outward to blob sphere surface, then add noise
-        const cubeLen =
-          Math.sqrt(cubeX * cubeX + cubeY * cubeY + cubeZ * cubeZ) + 0.001;
-        const normX = cubeX / cubeLen;
-        const normY = cubeY / cubeLen;
-        const normZ = cubeZ / cubeLen;
+        // Target is cube position + small bounded noise — particles stay cohesive
+        const targetX = cubeX + noiseX;
+        const targetY = cubeY + noiseY;
+        const targetZ = cubeZ + noiseZ;
 
-        const targetX = normX * effectiveBlobRadius + noiseX;
-        const targetY = normY * effectiveBlobRadius + noiseY;
-        const targetZ = normZ * effectiveBlobRadius + noiseZ;
-
-        p.vx += (targetX - p.x) * springK3;
-        p.vy += (targetY - p.y) * springK3;
-        p.vz += (targetZ - p.z) * springK3;
-        p.vx *= damping3;
-        p.vy *= damping3;
-        p.vz *= damping3;
+        p.vx += (targetX - p.x) * 0.02;
+        p.vy += (targetY - p.y) * 0.02;
+        p.vz += (targetZ - p.z) * 0.02;
+        p.vx *= 0.88;
+        p.vy *= 0.88;
+        p.vz *= 0.88;
         p.x += p.vx;
         p.y += p.vy;
         p.z += p.vz;
