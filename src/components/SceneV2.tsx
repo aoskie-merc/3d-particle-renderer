@@ -3,7 +3,7 @@ import { useFrame, useThree } from "@react-three/fiber";
 
 import { useEffect, useMemo, useRef, useState } from "react";
 
-import { Euler, Matrix4, Vector3 } from "three";
+import { Euler, Matrix4, Quaternion, Vector3 } from "three";
 import type { OrbitControls as ThreeOrbitControls } from "three-stdlib";
 
 import type { IBoidParticle } from "../sim/boids3d";
@@ -170,6 +170,19 @@ function computeWave1Group(
 
 /** Scratch Vector3 reused every frame to avoid per-frame allocations. */
 const _scratchCamDir = new Vector3();
+
+// Beat 5 quaternion delta scratch objects — allocated once at module level to
+// avoid per-frame GC pressure. The delta quaternion encodes the exact rotation
+// that takes a point from the figure's base pose (homeX/Y/Z) to its current
+// pose (base + approvedRotX/Y), matching the XYZ Euler order Three.js uses for
+// figureGroupRef. This replaces the old manual cosZ/sinZ+cosX/sinX math which
+// approximated rotation around world -Z and caused squishing under compound Euler angles.
+const _beat5EulerBase = new Euler();
+const _beat5EulerNew = new Euler();
+const _beat5QuatBase = new Quaternion();
+const _beat5QuatNew = new Quaternion();
+const _beat5QuatDelta = new Quaternion();
+const _beat5Vec = new Vector3();
 
 /** Cubic ease-in-out (smootherstep). */
 function cubicEase(t: number): number {
@@ -1277,10 +1290,27 @@ export default function SceneV2(props: ISceneV2Props) {
       (approvedRotXTargetRef.current - approvedRotXRef.current) *
       Math.min(1, delta * 4);
 
-    const cosApproved = Math.cos(approvedRotYRef.current);
-    const sinApproved = Math.sin(approvedRotYRef.current);
-    const cosApprovedX = Math.cos(approvedRotXRef.current);
-    const sinApprovedX = Math.sin(approvedRotXRef.current);
+    // Beat 5: compute the quaternion delta once per frame so all particle sites
+    // (orbit non-breakaway, shimmer, breathe, flow, still) share the same exact
+    // rotation without per-site manual axis approximations.
+    if (currentBeat === 5) {
+      const baseRot = debugMeshRotationRef.current ?? {
+        x: -1.59,
+        y: 0.01,
+        z: 0.01,
+      };
+      _beat5EulerBase.set(baseRot.x, baseRot.y, baseRot.z, "XYZ");
+      _beat5EulerNew.set(
+        baseRot.x + approvedRotXRef.current,
+        baseRot.y + approvedRotYRef.current,
+        baseRot.z,
+        "XYZ",
+      );
+      _beat5QuatBase.setFromEuler(_beat5EulerBase);
+      _beat5QuatNew.setFromEuler(_beat5EulerNew);
+      // Delta = Q_new * Q_base^-1; conjugate() == invert() for unit quaternions
+      _beat5QuatDelta.copy(_beat5QuatNew).multiply(_beat5QuatBase.conjugate());
+    }
 
     // Advance transition
     const trans = transitionRef.current;
@@ -1366,16 +1396,13 @@ export default function SceneV2(props: ISceneV2Props) {
           p.targetY = Math.sin(bs.orbitAngle * 0.3) * 0.4;
           p.targetZ = Math.sin(bs.orbitAngle) * bs.orbitRadius;
         } else {
-          // Combined Z then X rotation so orbit surface particles track the
-          // spinning figure without deforming when X-tilt is applied.
-          // Spin is around world -Z (the figure's visual vertical after debugRotX ≈ -π/2),
-          // not world Y — world Y mixes homeX with homeZ (vertical height), causing squish.
-          const ox1 = p.homeX * cosApproved + p.homeY * sinApproved;
-          const oy1 = -p.homeX * sinApproved + p.homeY * cosApproved;
-          const oz1 = p.homeZ; // vertical axis is unchanged during spin
-          p.targetX = ox1;
-          p.targetY = oy1 * cosApprovedX - oz1 * sinApprovedX;
-          p.targetZ = oy1 * sinApprovedX + oz1 * cosApprovedX;
+          // Quaternion delta: rotates home position from base pose to current pose,
+          // matching the exact XYZ Euler rotation applied to figureGroupRef.
+          _beat5Vec.set(p.homeX, p.homeY, p.homeZ);
+          _beat5Vec.applyQuaternion(_beat5QuatDelta);
+          p.targetX = _beat5Vec.x;
+          p.targetY = _beat5Vec.y;
+          p.targetZ = _beat5Vec.z;
         }
       }
     } else {
@@ -1870,14 +1897,11 @@ export default function SceneV2(props: ISceneV2Props) {
           }
           for (let i = 0; i < primaryCount; i++) {
             const p = particles[i];
-            // Combined Z then X rotation so shimmer tracks the spinning figure.
-            // Spin around world -Z (figure's visual vertical), not world Y.
-            const rx1s = p.homeX * cosApproved + p.homeY * sinApproved;
-            const ry1s = -p.homeX * sinApproved + p.homeY * cosApproved;
-            const rz1s = p.homeZ;
-            const rhX = rx1s;
-            const rhY = ry1s * cosApprovedX - rz1s * sinApprovedX;
-            const rhZ = ry1s * sinApprovedX + rz1s * cosApprovedX;
+            _beat5Vec.set(p.homeX, p.homeY, p.homeZ);
+            _beat5Vec.applyQuaternion(_beat5QuatDelta);
+            const rhX = _beat5Vec.x;
+            const rhY = _beat5Vec.y;
+            const rhZ = _beat5Vec.z;
             const homeLen = Math.sqrt(rhX * rhX + rhY * rhY + rhZ * rhZ);
             if (homeLen > 1e-6) {
               const invLen = 1 / homeLen;
@@ -1896,14 +1920,11 @@ export default function SceneV2(props: ISceneV2Props) {
           const breatheOffset = Math.sin(elapsed * 0.8) * 0.04;
           for (let i = 0; i < primaryCount; i++) {
             const p = particles[i];
-            // Combined Z then X rotation so breathe tracks the spinning figure.
-            // Spin around world -Z (figure's visual vertical), not world Y.
-            const rx1b = p.homeX * cosApproved + p.homeY * sinApproved;
-            const ry1b = -p.homeX * sinApproved + p.homeY * cosApproved;
-            const rz1b = p.homeZ;
-            const rhX = rx1b;
-            const rhY = ry1b * cosApprovedX - rz1b * sinApprovedX;
-            const rhZ = ry1b * sinApprovedX + rz1b * cosApprovedX;
+            _beat5Vec.set(p.homeX, p.homeY, p.homeZ);
+            _beat5Vec.applyQuaternion(_beat5QuatDelta);
+            const rhX = _beat5Vec.x;
+            const rhY = _beat5Vec.y;
+            const rhZ = _beat5Vec.z;
             const homeLen = Math.sqrt(rhX * rhX + rhY * rhY + rhZ * rhZ);
             if (homeLen > 1e-6) {
               const invLen = 1 / homeLen;
@@ -1920,14 +1941,11 @@ export default function SceneV2(props: ISceneV2Props) {
           // Each particle has its own independent per-particle noise phase offset
           for (let i = 0; i < primaryCount; i++) {
             const p = particles[i];
-            // Combined Z then X rotation so flow tracks the spinning figure.
-            // Spin around world -Z (figure's visual vertical), not world Y.
-            const rx1f = p.homeX * cosApproved + p.homeY * sinApproved;
-            const ry1f = -p.homeX * sinApproved + p.homeY * cosApproved;
-            const rz1f = p.homeZ;
-            const rhX = rx1f;
-            const rhY = ry1f * cosApprovedX - rz1f * sinApprovedX;
-            const rhZ = ry1f * sinApprovedX + rz1f * cosApprovedX;
+            _beat5Vec.set(p.homeX, p.homeY, p.homeZ);
+            _beat5Vec.applyQuaternion(_beat5QuatDelta);
+            const rhX = _beat5Vec.x;
+            const rhY = _beat5Vec.y;
+            const rhZ = _beat5Vec.z;
             const homeLen = Math.sqrt(rhX * rhX + rhY * rhY + rhZ * rhZ);
             if (homeLen > 1e-6) {
               const invLen = 1 / homeLen;
@@ -1945,13 +1963,11 @@ export default function SceneV2(props: ISceneV2Props) {
           // still: no offset, particles rest exactly on surface (rotated with figure)
           for (let i = 0; i < primaryCount; i++) {
             const p = particles[i];
-            // Spin around world -Z (figure's visual vertical), not world Y.
-            const sx1 = p.homeX * cosApproved + p.homeY * sinApproved;
-            const sy1 = -p.homeX * sinApproved + p.homeY * cosApproved;
-            const sz1 = p.homeZ;
-            p.targetX = sx1;
-            p.targetY = sy1 * cosApprovedX - sz1 * sinApprovedX;
-            p.targetZ = sy1 * sinApprovedX + sz1 * cosApprovedX;
+            _beat5Vec.set(p.homeX, p.homeY, p.homeZ);
+            _beat5Vec.applyQuaternion(_beat5QuatDelta);
+            p.targetX = _beat5Vec.x;
+            p.targetY = _beat5Vec.y;
+            p.targetZ = _beat5Vec.z;
           }
         }
 
