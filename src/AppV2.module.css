@@ -710,3 +710,20 @@
   background: #1a1a2e;
   color: white;
 }
+
+.resetButton {
+  background: transparent;
+  border: 1px solid rgba(255, 255, 255, 0.2);
+  border-radius: 6px;
+  color: rgba(255, 255, 255, 0.5);
+  cursor: pointer;
+  font-size: 11px;
+  letter-spacing: 0.04em;
+  padding: 4px 10px;
+  margin-top: 4px;
+  transition: border-color 0.15s, color 0.15s;
+}
+.resetButton:hover {
+  border-color: rgba(255, 255, 255, 0.5);
+  color: rgba(255, 255, 255, 0.9);
+}

@@ -139,11 +139,11 @@ const DENSITY_PRESETS: {
 ];
 
 const DEFAULT_BEAT_DURATIONS: Record<TBeat, number> = {
-  0: 4, // Initial
-  1: 6, // Swirl In
+  0: 5, // Initial
+  1: 5, // Swirl In
   2: 8, // Form
-  3: 12, // Hint (3 cycles × 4.2 s ≈ 12.6 s)
-  4: 20, // Reveal
+  3: 20, // Hint
+  4: 10, // Reveal
   5: 10, // Approved
 };
 
@@ -1166,6 +1166,12 @@ export default function AppV2() {
                     />
                   </div>
                 ))}
+                <button
+                  className={styles.resetButton}
+                  onClick={() => setBeatDurations(DEFAULT_BEAT_DURATIONS)}
+                >
+                  Reset to defaults
+                </button>
               </div>
             )}
           </div>
