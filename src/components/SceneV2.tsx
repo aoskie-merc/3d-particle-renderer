@@ -1131,10 +1131,21 @@ export default function SceneV2(props: ISceneV2Props) {
       beat4EntryRotYRef.current = shapeRotationRef.current;
       beat4EntryRotXRef.current = shapeRotationXRef.current;
       lastRevealStageRef.current = -1;
-      // Start the Y-sweep just above the topmost particle so no particles solidify
-      // on frame 1. The wave sweeps downward from maxHomeY to minHomeY.
-      const yRange4Init = waveMaxYRef.current - waveMinYRef.current;
-      waveRadiusBeat4Ref.current = waveMaxYRef.current + yRange4Init * 0.02;
+      // Use current particle Y positions (visual height in rotated cube) for wave order.
+      // rebuildWaveAndSortedTargets() computed waveMaxY/MinY from -homeZ, which is
+      // correct when skipping directly to Beat 4 but wrong after accumulated rotation.
+      // Overwrite those refs with the actual particle Y range so the wave sweeps
+      // from the visual top of the rotated cube regardless of accumulated rotation.
+      let beat4MaxY = -Infinity;
+      let beat4MinY = Infinity;
+      for (let i = 0; i < particles.length; i++) {
+        if (particles[i].y > beat4MaxY) beat4MaxY = particles[i].y;
+        if (particles[i].y < beat4MinY) beat4MinY = particles[i].y;
+      }
+      waveMaxYRef.current = beat4MaxY;
+      waveMinYRef.current = beat4MinY;
+      // Start wave just above the top particle so no particles solidify on frame 1.
+      waveRadiusBeat4Ref.current = beat4MaxY + (beat4MaxY - beat4MinY) * 0.02;
     }
 
     transitionRef.current = {
@@ -1644,8 +1655,8 @@ export default function SceneV2(props: ISceneV2Props) {
         const p = particles[i];
         const phase = i * 0.37;
 
-        if (-p.homeZ >= waveY4 + waveWidthY4) {
-          // Solidified: head-side of wave front, permanently at figure surface
+        if (p.y - waveY4 >= waveWidthY4) {
+          // Solidified: above wave front (high visual Y), permanently at figure surface
           p.targetX = p.homeX + Math.sin(tOscFig4 + phase) * figJitter4;
           p.targetY = p.homeY + Math.cos(tOscFig4 * 0.7 + phase) * figJitter4;
           p.targetZ =
@@ -1665,8 +1676,8 @@ export default function SceneV2(props: ISceneV2Props) {
           const cubeY4 = cosX4 * ry4 - sinX4 * rz4;
           const cubeZ4 = sinX4 * ry4 + cosX4 * rz4;
 
-          // waveEdgeY4 > 0 means particle is on the head-side of the sweep plane
-          const waveEdgeY4 = -p.homeZ - waveY4;
+          // waveEdgeY4 > 0 means particle is above the wave sweep plane (visually higher)
+          const waveEdgeY4 = p.y - waveY4;
           const t4Raw = Math.max(0, Math.min(1, waveEdgeY4 / waveWidthY4));
           // Double smoothstep: smoothstep(smoothstep(t)) for very gentle ease
           const sm1 = t4Raw * t4Raw * (3 - 2 * t4Raw);
