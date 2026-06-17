@@ -407,10 +407,9 @@ export default function SceneV2(props: ISceneV2Props) {
   transitionDurationRef.current = transitionDuration;
 
   /**
-   * How "settled" we are into the current beat: 0 = just entered, 1 = fully in.
-   * Reset to 0 on every beat change and ramped up each frame over transitionDuration
-   * seconds. Multiplied into lerp/spring weights so new dynamics engage gradually
-   * rather than snapping immediately — creating the feel of one continuous narrative.
+   * Always 1.0 — previously ramped 0→1 on beat entry, now fixed so dynamics
+   * engage instantly from frame 1. Smooth handoffs are achieved by a one-time
+   * velocity dampening at beat entry instead of a progressive ramp multiplier.
    */
   const beatTransitionRef = useRef(1.0);
 
@@ -506,13 +505,6 @@ export default function SceneV2(props: ISceneV2Props) {
   // ── Beat 2 cascade state ──────────────────────────────────────────────────
 
   const beat2StartTimeRef = useRef(-1);
-  const beat5StartTimeRef = useRef(-1);
-  /**
-   * Ramps 0→1 over 3 s at the start of Beat 2 to gently ease boid forces in.
-   * Prevents the "gnats" burst that occurs when boid forces restart at full
-   * strength before the lerp-to-cube has warmed up.
-   */
-  const beat2WarmupRef = useRef(0);
 
   // ── Beat 4 multi-wave reveal state ────────────────────────────────────────
 
@@ -532,6 +524,8 @@ export default function SceneV2(props: ISceneV2Props) {
   const beat3MorphFractionRef = useRef(0);
   /** Beat 3: slowly rotating attention direction used for spatial variation. */
   const beat3AttentionCentroidRef = useRef(new Vector3());
+  /** Beat 3: low-pass filtered attention direction for Searching mode (prevents sudden jumps). */
+  const beat3AttentionRef = useRef({ x: 0, y: 1, z: 0 });
   /** Beat 3: per-particle curvature + prominence weights (0–1); computed at beat entry. */
   const beat3ParticleWeightsRef = useRef(new Float32Array(0));
   /** Beat 4: current active reveal stage (region index, 0 = first to emerge). */
@@ -965,10 +959,8 @@ export default function SceneV2(props: ISceneV2Props) {
       for (let i = 0; i < particles.length; i++) particles[i].size = 1;
     }
 
-    // Set target positions for the incoming beat
-    setTargetsForBeat(particles, beat, cubeTargetsRef.current);
-
-    // Rebuild shape targets for beats 2/3 when shape might have changed
+    // Rebuild shape targets for beats 2/3 before setting targets so that beat 3
+    // can use the proximity-matched sorted array as its baseline (no crossing).
     if (beat === 2 || beat === 3) {
       cubeTargetsRef.current = generateCubeTargets(
         particles.length,
@@ -981,10 +973,34 @@ export default function SceneV2(props: ISceneV2Props) {
       );
     }
 
+    // Set target positions for the incoming beat.
+    // Beat 3 uses sorted (proximity-matched) targets so each particle's initial
+    // target aligns with its cube position — no cross-particle travel at entry.
+    setTargetsForBeat(
+      particles,
+      beat,
+      beat === 3 ? sortedCubeTargetsRef.current : cubeTargetsRef.current,
+    );
+
+    // One-time velocity dampen at beat entry: preserves momentum direction while
+    // reducing magnitude for a smooth handoff without a ramp-up delay.
+    // transitionDuration slider (0.5–4.0) maps to a dampening factor (0.2–0.8).
+    const velocityDampenFactor =
+      0.2 +
+      ((Math.max(0.5, Math.min(transitionDurationRef.current, 4.0)) - 0.5) /
+        3.5) *
+        0.6;
+    const primaryCtForDampen =
+      particles.length - Math.ceil(particles.length * 0.06);
+    for (let i = 0; i < primaryCtForDampen; i++) {
+      particles[i].vx *= velocityDampenFactor;
+      particles[i].vy *= velocityDampenFactor;
+      particles[i].vz *= velocityDampenFactor;
+    }
+
     // Reset cascade timer when entering beat 2
     if (beat === 2) {
       beat2StartTimeRef.current = -1; // initialized on first useFrame tick
-      beat2WarmupRef.current = 0; // swirl forces and lerp ramp in over 5 s for graceful motion
     }
 
     // Reset Beat 3 morphing clay state and pre-compute per-particle weights
@@ -992,22 +1008,14 @@ export default function SceneV2(props: ISceneV2Props) {
       beat3StartTimeRef.current = -1;
       hintPhaseRef.current = 0;
       beat3MorphFractionRef.current = 0;
-      // Dampen (not zero) velocities: preserve momentum direction but reduce magnitude
-      // so the spring warmup has less to fight while keeping motion alive across the transition.
-      const primaryCt3 = particles.length - Math.ceil(particles.length * 0.06);
-      for (let i = 0; i < primaryCt3; i++) {
-        particles[i].vx *= 0.3;
-        particles[i].vy *= 0.3;
-        particles[i].vz *= 0.3;
-      }
 
       // Pre-compute per-particle curvature + prominence weights (0–1).
       // Higher weight = more likely to drift toward figure surface during hint.
-      const weightArr = new Float32Array(primaryCt3);
+      const weightArr = new Float32Array(primaryCtForDampen);
       let minY3 = Infinity,
         maxY3 = -Infinity,
         maxXAbs3 = 0;
-      for (let i = 0; i < primaryCt3; i++) {
+      for (let i = 0; i < primaryCtForDampen; i++) {
         const p = particles[i];
         if (p.homeY < minY3) minY3 = p.homeY;
         if (p.homeY > maxY3) maxY3 = p.homeY;
@@ -1015,7 +1023,7 @@ export default function SceneV2(props: ISceneV2Props) {
         if (ax > maxXAbs3) maxXAbs3 = ax;
       }
       const yRange3 = maxY3 - minY3 + 0.001;
-      for (let i = 0; i < primaryCt3; i++) {
+      for (let i = 0; i < primaryCtForDampen; i++) {
         const p = particles[i];
         const yNorm = (p.homeY - minY3) / yRange3;
         const xNorm = Math.abs(p.homeX) / (maxXAbs3 + 0.001);
@@ -1470,11 +1478,31 @@ export default function SceneV2(props: ISceneV2Props) {
         const sAY = 0.3 + Math.cos(sweepAngle * 0.7) * 0.5;
         const sAZ = Math.cos(sweepAngle * 0.5) * 0.3;
         const sLen = Math.sqrt(sAX * sAX + sAY * sAY + sAZ * sAZ);
-        attNX = sLen > 0.001 ? sAX / sLen : 0;
-        attNY = sLen > 0.001 ? sAY / sLen : 1;
-        attNZ = sLen > 0.001 ? sAZ / sLen : 0;
-        // morphFraction is used at high amplitude; per-particle spatial falloff handles focus
-        morphFraction = clarityFraction * 0.9;
+        const targetAX = sLen > 0.001 ? sAX / sLen : 0;
+        const targetAY = sLen > 0.001 ? sAY / sLen : 1;
+        const targetAZ = sLen > 0.001 ? sAZ / sLen : 0;
+
+        // Smooth the attention direction with a slow lerp to prevent sudden jumps
+        const attSmoothRate = Math.min(1, dt * 0.5);
+        beat3AttentionRef.current.x +=
+          (targetAX - beat3AttentionRef.current.x) * attSmoothRate;
+        beat3AttentionRef.current.y +=
+          (targetAY - beat3AttentionRef.current.y) * attSmoothRate;
+        beat3AttentionRef.current.z +=
+          (targetAZ - beat3AttentionRef.current.z) * attSmoothRate;
+        const attLen =
+          Math.sqrt(
+            beat3AttentionRef.current.x ** 2 +
+              beat3AttentionRef.current.y ** 2 +
+              beat3AttentionRef.current.z ** 2,
+          ) + 0.001;
+        attNX = beat3AttentionRef.current.x / attLen;
+        attNY = beat3AttentionRef.current.y / attLen;
+        attNZ = beat3AttentionRef.current.z / attLen;
+
+        // Slow sine pulse on morphFraction so particles don't all peak simultaneously
+        const pulsePhase = Math.sin(t * 0.3 + 1.0);
+        morphFraction = clarityFraction * (0.7 + 0.2 * pulsePhase);
       }
 
       beat3MorphFractionRef.current = morphFraction;
@@ -1541,7 +1569,7 @@ export default function SceneV2(props: ISceneV2Props) {
 
         if (motionStyle === "searching") {
           // Sharp spatial falloff — only particles in the focused region morph deeply
-          const FOCUS_SHARPNESS = 4.0;
+          const FOCUS_SHARPNESS = 2.0; // was 4.0 — softer edge, less abrupt activation
           spatialWeight = Math.max(0, alignment) ** FOCUS_SHARPNESS;
           const combinedWeight = spatialWeight * (0.3 + 0.7 * particleWeight);
           particleMorphFraction = morphFraction * combinedWeight;
@@ -1590,13 +1618,8 @@ export default function SceneV2(props: ISceneV2Props) {
         elapsed,
       );
 
-      // Stronger spring for dramatic morph travel; ramps from 0.010 to keep entry smooth
-      const warmupDuration3 = 1.0;
-      const springK3Base = 0.025;
-      const springK3 =
-        beat3Elapsed < warmupDuration3
-          ? 0.01 + (springK3Base - 0.01) * (beat3Elapsed / warmupDuration3)
-          : springK3Base;
+      // Full spring from frame 1 — sorted targets mean no crossing, so no warmup needed
+      const springK3 = 0.025;
       const damping3 = 0.82;
       const SHIMMER_AMP_3 = 0.002;
       for (let i = 0; i < primaryCount; i++) {
