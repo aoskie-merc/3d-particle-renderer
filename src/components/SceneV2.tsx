@@ -1093,13 +1093,18 @@ export default function SceneV2(props: ISceneV2Props) {
       // Rotation carries over from Beat 1 — no hard-reset
     }
 
-    // Reset Beat 3 melt state
+    // Reset Beat 3 melt state; spatially remap cube targets so particles spend
+    // the full Hint beat (20 s) lerping toward their remapped positions. By Beat
+    // 4 start all particles are already there — no positional jump occurs.
     if (beat === 3) {
       beat3StartTimeRef.current = -1;
       hintPhaseRef.current = 0;
+      rebuildWaveAndSortedTargets();
     }
 
-    // Reset Beat 4 staged reveal state; reset wave radius for new reveal pass
+    // Reset Beat 4 staged reveal state; reset wave radius for new reveal pass.
+    // Spatial remap (rebuildWaveAndSortedTargets) was already performed at Beat
+    // 3 entry, giving particles the full Hint beat to lerp to remapped positions.
     if (beat === 4) {
       beat4StartTimeRef.current = -1; // reset; initialized on first useFrame tick
       revealStageRef.current = 0;
@@ -1109,13 +1114,6 @@ export default function SceneV2(props: ISceneV2Props) {
       // home targets). The wave expands quickly enough to catch any hint particles
       // that were already near the figure in Beat 3.
       waveRadiusBeat4Ref.current = waveMaxDistRef.current * 0.02;
-      // Spatially remap cube→figure assignments so each particle's cube target is
-      // as close as possible to its figure home position. Top-of-figure particles
-      // start from the top of the cube, bottom from bottom, eliminating ugly
-      // diagonal crossing travel during the Reveal wave. Called here (Beat 3→4
-      // transition) rather than relying on earlier cached values so the remap is
-      // always fresh with the current home positions and cube geometry.
-      rebuildWaveAndSortedTargets();
     }
 
     transitionRef.current = {
@@ -1451,9 +1449,9 @@ export default function SceneV2(props: ISceneV2Props) {
       const MORPH_DELAY = 0.3;
       const morphElapsed = Math.max(0, beat3Elapsed - MORPH_DELAY);
       const morphPhase = morphElapsed * breatheSpeed;
-      // In the final 40%, steer targets back to cube so Beat 4 starts clean.
+      // In the final 45%, steer targets back to cube so Beat 4 starts clean.
       // Finishes at 85% so the last 15% is fully at cube — clean handoff to Beat 4.
-      const RETURN_START = 0.6;
+      const RETURN_START = 0.55;
       const RETURN_END = 0.85;
       const returnToSquare =
         beat3Progress > RETURN_START
