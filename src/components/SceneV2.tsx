@@ -198,6 +198,8 @@ function morphCubeTarget(
   // Ensures no jolt when Beat 3 starts (morphPhase always resets to 0 = cube)
   const t = (1 - Math.cos(morphPhase * Math.PI * 2)) / 2; // 0→1→0→1...
   const smooth = smoothstep(smoothstep(t)); // double smoothstep for extra ease
+  // Cap at 80% — never reach full sphere
+  const cappedSmooth = smooth * 0.8;
 
   const r = Math.sqrt(cubeX * cubeX + cubeY * cubeY + cubeZ * cubeZ);
   const sphereScale = r > 0 ? 0.57 / r : 0;
@@ -206,9 +208,9 @@ function morphCubeTarget(
   const sphereZ = cubeZ * sphereScale;
 
   return [
-    lerp(cubeX, sphereX, smooth),
-    lerp(cubeY, sphereY, smooth),
-    lerp(cubeZ, sphereZ, smooth),
+    lerp(cubeX, sphereX, cappedSmooth),
+    lerp(cubeY, sphereY, cappedSmooth),
+    lerp(cubeZ, sphereZ, cappedSmooth),
   ];
 }
 
