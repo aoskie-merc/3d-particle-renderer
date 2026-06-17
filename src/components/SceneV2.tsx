@@ -553,6 +553,10 @@ export default function SceneV2(props: ISceneV2Props) {
    * Flat Float32Array: [x0,y0,z0, x1,y1,z1, ...] for primaryCount particles.
    */
   const beat4EntryPosRef = useRef<Float32Array>(new Float32Array(0));
+  // ── Beat 1 pre-pull state ─────────────────────────────────────────────────
+
+  const beat1StartTimeRef = useRef(-1);
+
   // ── Beat 2 cascade state ──────────────────────────────────────────────────
 
   const beat2StartTimeRef = useRef(-1);
@@ -1026,7 +1030,9 @@ export default function SceneV2(props: ISceneV2Props) {
     // sortedCubeTargetsRef that Beat 2 ended with — regenerating cube targets
     // here would assign new random positions, causing a position jump on the
     // first frame of Beat 3.
-    if (beat === 2) {
+    // Skip if targets were already pre-assigned during Beat 1 entry (they are
+    // identical — same generateCubeTargets params + same proximity assignment).
+    if (beat === 2 && sortedCubeTargetsRef.current.length === 0) {
       cubeTargetsRef.current = generateCubeTargets(
         particles.length,
         cubeScaleRef.current,
@@ -1073,6 +1079,16 @@ export default function SceneV2(props: ISceneV2Props) {
     if (beat === 1) {
       shapeRotationRef.current = Math.PI / 5; // 36° — matches Beat 2's initial angle
       shapeRotationXRef.current = Math.PI / 8; // 22.5°
+      beat1StartTimeRef.current = -1; // initialized on first useFrame tick
+      // Pre-assign cube targets now so the second-half gentle pull has targets ready
+      cubeTargetsRef.current = generateCubeTargets(
+        particles.length,
+        cubeScaleRef.current,
+      );
+      sortedCubeTargetsRef.current = reassignCubeTargetsByProximity(
+        particles,
+        cubeTargetsRef.current,
+      );
     }
 
     // Reset cascade timer when entering beat 2
@@ -1844,6 +1860,13 @@ export default function SceneV2(props: ISceneV2Props) {
           }
         }
       } else if (currentBeat === 1) {
+        if (beat1StartTimeRef.current < 0) beat1StartTimeRef.current = elapsed;
+        const beat1Elapsed = elapsed - beat1StartTimeRef.current;
+        const beat1Progress = Math.min(
+          1,
+          beat1Elapsed / Math.max(beatDurationRef.current, 1),
+        );
+
         // Cube rotation in Swirl In — same constant speed as Beat 2 and Beat 3
         shapeRotationRef.current += 0.00225 * dt * 60;
         shapeRotationXRef.current += 0.00075 * dt * 60;
@@ -1865,6 +1888,30 @@ export default function SceneV2(props: ISceneV2Props) {
           p.vx *= 0.45;
           p.vy *= 0.45;
           p.vz *= 0.45;
+        }
+
+        // In the second half of Beat 1, gently pull particles toward their pre-assigned
+        // cube targets so they're already 30–40% of the way there when Beat 2 starts.
+        // The pull starts at 0 and ease-in increases to cubeLerpRate=0.008 at beat end.
+        if (
+          beat1Progress > 0.5 &&
+          sortedCubeTargetsRef.current.length >= primaryCount * 3
+        ) {
+          const pullT = (beat1Progress - 0.5) / 0.5; // 0→1 over second half
+          const pullSmooth = pullT * pullT; // ease in
+          const cubeLerpRate = pullSmooth * 0.008;
+
+          for (let i = 0; i < primaryCount; i++) {
+            const p = particles[i];
+            const i3 = i * 3;
+            const cubeTargX = sortedCubeTargetsRef.current[i3];
+            const cubeTargY = sortedCubeTargetsRef.current[i3 + 1];
+            const cubeTargZ = sortedCubeTargetsRef.current[i3 + 2];
+
+            p.x += (cubeTargX - p.x) * cubeLerpRate;
+            p.y += (cubeTargY - p.y) * cubeLerpRate;
+            p.z += (cubeTargZ - p.z) * cubeLerpRate;
+          }
         }
       } else {
         // Beat 0: swirl boid on primary particles with ring-maintaining nudge
