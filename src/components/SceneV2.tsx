@@ -1747,7 +1747,22 @@ export default function SceneV2(props: ISceneV2Props) {
         }
       }
 
-      const orbitAlpha4 = (1 - Math.exp(-0.3 * dt)) * 0.05;
+      // In the second half of Beat 4, blend orbit alpha toward Beat 5's rate so
+      // orbit particles pre-drift close to their home positions before Beat 5 begins —
+      // no rush or lurch when Beat 5 starts. Both beats share the same target (homeX/Y/Z).
+      const beat4TimeProgress = Math.min(
+        1,
+        beat4Elapsed / Math.max(beatDurationRef.current, 1),
+      );
+      const orbitAlphaBase4 = (1 - Math.exp(-0.3 * dt)) * 0.05; // Beat 4 slow rate
+      let orbitAlpha4 = orbitAlphaBase4;
+      if (beat4TimeProgress > 0.5) {
+        const blendT = (beat4TimeProgress - 0.5) / 0.5; // 0→1 in second half
+        const blendSmooth = blendT * blendT; // ease in — accelerates gently
+        // Beat 5's orbit alpha (getLerpSpeedForBeat(5)=1.2, lerpWeight=1, beatTransition=1)
+        const orbitAlphaBeat5 = 1 - Math.exp(-1.2 * dt);
+        orbitAlpha4 = lerp(orbitAlphaBase4, orbitAlphaBeat5, blendSmooth);
+      }
       for (let i = primaryCount; i < n; i++) {
         const p = particles[i];
         p.x += (p.targetX - p.x) * orbitAlpha4;
