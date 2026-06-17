@@ -9,6 +9,9 @@ export type THintShape = "blob" | "wedge" | "contour";
 /** Controls how strongly the cube morphs toward the figure contours during Beat 3 (Hint). */
 export type THintClarity = "whisper" | "subtle" | "suggestive";
 
+/** Controls the motion style of the cube deformation during Beat 3 (Hint). */
+export type THintMotionStyle = "searching" | "breathing" | "melting";
+
 export type TDirectionBias = "radial" | "tangential" | "random";
 
 export type TBlendModeKey = "normal" | "additive" | "multiply";

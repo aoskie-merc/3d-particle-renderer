@@ -1500,6 +1500,8 @@ export default function SceneV2(props: ISceneV2Props) {
 
         const p = particles[i];
 
+        const particleWeight = i < weights3.length ? weights3[i] : 0.3;
+
         // How aligned is this particle's home position with the attention direction?
         const hLen = Math.sqrt(
           p.homeX * p.homeX + p.homeY * p.homeY + p.homeZ * p.homeZ,
@@ -1508,12 +1510,34 @@ export default function SceneV2(props: ISceneV2Props) {
         const hNY = hLen > 0.001 ? p.homeY / hLen : 0;
         const hNZ = hLen > 0.001 ? p.homeZ / hLen : 0;
         const alignment = hNX * attNX + hNY * attNY + hNZ * attNZ;
-        const spatialWeight = Math.max(0, alignment);
 
-        const particleWeight = i < weights3.length ? weights3[i] : 0.3;
+        let spatialWeight: number;
+        let particleMorphFraction: number;
 
-        // Blend fraction: both spatial alignment and per-particle prominence modulate drift
-        const blendFactor = morphFraction * particleWeight * spatialWeight;
+        if (motionStyle === "searching") {
+          // Sharp spatial falloff — only particles in the focused region morph deeply
+          const FOCUS_SHARPNESS = 4.0;
+          spatialWeight = Math.max(0, alignment) ** FOCUS_SHARPNESS;
+          const combinedWeight = spatialWeight * (0.3 + 0.7 * particleWeight);
+          particleMorphFraction = morphFraction * combinedWeight;
+        } else if (motionStyle === "melting") {
+          // Particles far from home (still cube-shaped) get the most pull
+          const distToHome = Math.sqrt(
+            (p.x - p.homeX) ** 2 + (p.y - p.homeY) ** 2 + (p.z - p.homeZ) ** 2,
+          );
+          const proximityWeight = Math.exp(-distToHome * 2.0);
+          const pullWeight = 1.0 - proximityWeight;
+          spatialWeight = Math.max(0, alignment);
+          particleMorphFraction =
+            morphFraction * pullWeight * (0.3 + 0.7 * particleWeight);
+        } else {
+          // "breathing" — uniform, weighted by curvature
+          spatialWeight = 0.5 + 0.5 * particleWeight;
+          particleMorphFraction = morphFraction * spatialWeight;
+        }
+
+        // Blend fraction: moves particle target toward figure home position
+        const blendFactor = Math.min(1, particleMorphFraction);
         p.targetX = cubeX + (p.homeX - cubeX) * blendFactor;
         p.targetY = cubeY + (p.homeY - cubeY) * blendFactor;
         p.targetZ = cubeZ + (p.homeZ - cubeZ) * blendFactor;
@@ -1541,14 +1565,14 @@ export default function SceneV2(props: ISceneV2Props) {
         elapsed,
       );
 
-      // Very soft spring — high damping for smooth clay-like motion; ramps from 0.008
+      // Stronger spring for dramatic morph travel; ramps from 0.010 to keep entry smooth
       const warmupDuration3 = 1.0;
-      const springK3Base = 0.015;
+      const springK3Base = 0.025;
       const springK3 =
         beat3Elapsed < warmupDuration3
-          ? 0.008 + (springK3Base - 0.008) * (beat3Elapsed / warmupDuration3)
+          ? 0.01 + (springK3Base - 0.01) * (beat3Elapsed / warmupDuration3)
           : springK3Base;
-      const damping3 = 0.85;
+      const damping3 = 0.82;
       const SHIMMER_AMP_3 = 0.002;
       for (let i = 0; i < primaryCount; i++) {
         const p = particles[i];
