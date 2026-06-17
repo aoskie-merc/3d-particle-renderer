@@ -459,6 +459,9 @@ export default function SceneV2(props: ISceneV2Props) {
    */
   const beatTransitionRef = useRef(1.0);
 
+  /** Smoothly transitions to 0.8 in Reveal (beat 4) and Approved (beat 5) to reduce skin particle size 20%. */
+  const skinSizeMultiplierRef = useRef(1.0);
+
   // ── Geometry & surface samples ────────────────────────────────────────────
 
   const geometryRef = useRef<BufferGeometry | null>(null);
@@ -1150,6 +1153,11 @@ export default function SceneV2(props: ISceneV2Props) {
     const elapsed = state.clock.elapsedTime;
     const currentBeat = beatRef.current;
     const n = particles.length;
+
+    // Smoothly scale skin particles down 20% in Reveal (beat 4) and Approved (beat 5).
+    const skinSizeTarget = currentBeat === 4 || currentBeat === 5 ? 0.8 : 1.0;
+    skinSizeMultiplierRef.current +=
+      (skinSizeTarget - skinSizeMultiplierRef.current) * 0.02;
 
     // Advance transition
     const trans = transitionRef.current;
@@ -2057,7 +2065,7 @@ export default function SceneV2(props: ISceneV2Props) {
             isDarkMode
             normalShading={0}
             particleCount={Math.min(skinParticleCount, PARTICLE_CAPACITY)}
-            particleSize={particleSize * 2.5}
+            particleSize={particleSize * 2.5 * skinSizeMultiplierRef.current}
             proximityMode={proximityMode}
             proximityRadius={0.5}
             skinColor={color}
