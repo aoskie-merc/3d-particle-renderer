@@ -1592,12 +1592,12 @@ export default function SceneV2(props: ISceneV2Props) {
         0.1,
       );
       const waveRate4 =
-        (waveYRange4 * waveSpeedRef.current) /
+        (waveYRange4 * waveSpeedRef.current * 0.85) /
         Math.max(beatDurationRef.current, 1);
       waveRadiusBeat4Ref.current -= waveRate4 * dt;
       const waveY4 = waveRadiusBeat4Ref.current;
-      // Blend zone in Y units — particles near the sweep plane interpolate
-      const waveWidthY4 = Math.max(0.15, waveYRange4 * 0.18);
+      // Blend zone in Y units — 38% of total height for a wide, slow-melt feel
+      const waveWidthY4 = waveYRange4 * 0.38;
 
       const sortedTargets4 =
         sortedCubeTargetsRef.current.length > 0
@@ -1667,8 +1667,10 @@ export default function SceneV2(props: ISceneV2Props) {
 
           // waveEdgeY4 > 0 means particle is on the head-side of the sweep plane
           const waveEdgeY4 = -p.homeZ - waveY4;
-          const rawFrac4 = Math.max(0, Math.min(1, waveEdgeY4 / waveWidthY4));
-          const t4 = rawFrac4 * rawFrac4 * (3 - 2 * rawFrac4); // smoothstep
+          const t4Raw = Math.max(0, Math.min(1, waveEdgeY4 / waveWidthY4));
+          // Double smoothstep: smoothstep(smoothstep(t)) for very gentle ease
+          const sm1 = t4Raw * t4Raw * (3 - 2 * t4Raw);
+          const t4 = sm1 * sm1 * (3 - 2 * sm1);
           p.targetX = cubeX4 * (1 - t4) + p.homeX * t4;
           p.targetY = cubeY4 * (1 - t4) + p.homeY * t4;
           p.targetZ = cubeZ4 * (1 - t4) + p.homeZ * t4;
