@@ -29,13 +29,11 @@ import {
 } from "../utils/surfaceSampler";
 import { loadStaticModel } from "../utils/meshIngest";
 import type {
-  THintMotionStyle,
   TSurfaceDepthBias,
   TDepthSizing,
   TDepthOpacityMode,
   THintShape,
   THintStyle,
-  THintClarity,
 } from "../types";
 import ParticleSystemV2 from "./ParticleSystemV2";
 import SkinParticleSystem from "./SkinParticleSystem";
@@ -50,11 +48,11 @@ const TRANSITION_DURATION = 0.5; // seconds
 
 export const CAMERA_POSITIONS: Record<TBeat, [number, number, number]> = {
   0: [0, 0, 6], // Beat 0: facing the XY ring, looking through the donut hole
-  1: [-0.8, 0.8, 4.5], // Beat 1: pulled back to give particles room to swirl in
-  2: [-1.0, 0.8, 3.8], // Beat 2: medium distance, 3/4 angle for geometric shape
-  3: [-1.0, 0.8, 3.6], // Beat 3: slightly closer as shape hints at figure
-  4: [-1.2, 0.8, 3.2], // Beat 4: close, intimate reveal angle matching v1
-  5: [-1.2, 0.8, 3.2], // Beat 5 (Approved): same as v1 framing
+  1: [-0.8, 0.4, 4.5], // Beat 1: pulled back to give particles room to swirl in
+  2: [-1.0, 0.3, 3.8], // Beat 2: medium distance, 3/4 angle for geometric shape
+  3: [-1.0, 0.3, 3.6], // Beat 3: slightly closer as shape hints at figure
+  4: [-1.2, 0.3, 3.2], // Beat 4: close, intimate reveal angle matching v1
+  5: [-1.2, 0.3, 3.2], // Beat 5 (Approved): same as v1 framing
 };
 
 // ── Helpers ────────────────────────────────────────────────────────────────────
@@ -237,8 +235,6 @@ export interface ISceneV2Props {
   cubeScale?: number;
   /** Number of breathe-out-and-back cycles during Beat 3 Hint (1–4, default 2). */
   hintCycles?: number;
-  /** Controls how strongly the cube morphs toward the figure contours during Beat 3. */
-  hintClarity?: THintClarity;
   /** Controls the wave shape of particle emergence within each Beat 3 hint cycle. */
   hintStyle?: THintStyle;
   /** Blob radius in world units for Beat 3 hint activation (0.2–1.0, default 0.4). */
@@ -252,10 +248,8 @@ export interface ISceneV2Props {
   waveSpeed?: number;
   /** Seconds to blend into a new beat's dynamics (0 = instant, 1.8 = default gentle ramp). */
   transitionDuration?: number;
-  /** Controls the motion style of the cube deformation during Beat 3 (Hint). */
-  hintMotionStyle?: THintMotionStyle;
-  /** Multiplier on the sweep period for "searching" motion style (0.2–3.0, default 1.0). */
-  hintSweepSpeed?: number;
+  /** Multiplier on how fast meltProgress advances during Beat 3 (0.2–3.0, default 1.0). */
+  hintMeltSpeed?: number;
 }
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
@@ -315,12 +309,15 @@ function applyRotationToHomes(
   cx /= written;
   cy /= written;
   cz /= written;
+  // Lift the figure upward so the full body is visible in frame
+  // (centroid is near the waist; without a lift, lower body is clipped)
+  const FIGURE_Y_LIFT = 0.6;
   for (let i = 0; i < written; i++) {
     particles[i].homeX -= cx;
-    particles[i].homeY -= cy;
+    particles[i].homeY -= cy - FIGURE_Y_LIFT;
     particles[i].homeZ -= cz;
   }
-  return { x: cx, y: cy, z: cz };
+  return { x: cx, y: cy - FIGURE_Y_LIFT, z: cz };
 }
 
 // ── Component ─────────────────────────────────────────────────────────────────
@@ -351,15 +348,13 @@ export default function SceneV2(props: ISceneV2Props) {
     depthOpacityMode = "off",
     cubeScale = 2.5,
     hintCycles = 3,
-    hintClarity = "whisper",
     hintStyle = "bulge",
     hintSpread = 0.4,
     hintShape = "blob",
     revealStages = 4,
     waveSpeed = 1.5,
     transitionDuration = 2.25,
-    hintMotionStyle = "searching",
-    hintSweepSpeed = 1.0,
+    hintMeltSpeed = 1.0,
   } = props;
 
   // Keep stable refs to latest props so useFrame closures always read fresh values
@@ -387,12 +382,8 @@ export default function SceneV2(props: ISceneV2Props) {
   cubeScaleRef.current = cubeScale;
   const hintCyclesRef = useRef(hintCycles);
   hintCyclesRef.current = hintCycles;
-  const hintClarityRef = useRef(hintClarity);
-  hintClarityRef.current = hintClarity;
-  const hintMotionStyleRef = useRef(hintMotionStyle);
-  hintMotionStyleRef.current = hintMotionStyle;
-  const hintSweepSpeedRef = useRef(hintSweepSpeed);
-  hintSweepSpeedRef.current = hintSweepSpeed;
+  const hintMeltSpeedRef = useRef(hintMeltSpeed);
+  hintMeltSpeedRef.current = hintMeltSpeed;
   const hintStyleRef = useRef(hintStyle);
   hintStyleRef.current = hintStyle;
   const hintSpreadRef = useRef(hintSpread);
@@ -1110,7 +1101,7 @@ export default function SceneV2(props: ISceneV2Props) {
 
   useEffect(() => {
     if (!orbitEnabled || !orbitControlsRef.current) return;
-    orbitControlsRef.current.target.set(0, 0.8, 0);
+    orbitControlsRef.current.target.set(0, 0.2, 0);
   }, [orbitEnabled]);
 
   // ── Per-frame simulation ──────────────────────────────────────────────────
@@ -2037,7 +2028,7 @@ export default function SceneV2(props: ISceneV2Props) {
         camTargetRef.current.set(tx, ty, tz);
         state.camera.position.lerp(camTargetRef.current, 0.02);
         // Beat 0: look straight at the ring center (Y=0); other beats: slight upward offset
-        state.camera.lookAt(0, currentBeat === 0 ? 0 : 0.8, 0);
+        state.camera.lookAt(0, currentBeat === 0 ? 0 : 0.2, 0);
       }
     }
 
