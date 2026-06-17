@@ -357,7 +357,7 @@ export default function SceneV2(props: ISceneV2Props) {
     hintShape = "blob",
     revealStages = 4,
     waveSpeed = 1.5,
-    transitionDuration = 1.8,
+    transitionDuration = 2.25,
     hintMotionStyle = "searching",
     hintSweepSpeed = 1.0,
   } = props;
@@ -1037,12 +1037,12 @@ export default function SceneV2(props: ISceneV2Props) {
       }
       // Boost by local surface curvature: creases, face, hands peek through more
       const curvRadius2 = 0.09;
-      const curvStep = Math.max(1, Math.floor(primaryCt3 / 40));
-      for (let i = 0; i < primaryCt3; i++) {
+      const curvStep = Math.max(1, Math.floor(primaryCtForDampen / 40));
+      for (let i = 0; i < primaryCtForDampen; i++) {
         const pi = particles[i];
         let curvSum = 0;
         let curvCnt = 0;
-        for (let j = 0; j < primaryCt3; j += curvStep) {
+        for (let j = 0; j < primaryCtForDampen; j += curvStep) {
           const pj = particles[j];
           const dx = pj.homeX - pi.homeX;
           const dy = pj.homeY - pi.homeY;
@@ -1075,41 +1075,18 @@ export default function SceneV2(props: ISceneV2Props) {
       // so hint particles that were emerged near the figure don't collapse back to
       // the cube before the wave catches them.
       waveRadiusBeat4Ref.current = waveMaxDistRef.current * 0.25;
-      // Dampen Beat 3 spring velocities: preserve momentum direction to avoid a dead stop
-      // while reducing magnitude enough to prevent destructive oscillation at Beat 4 entry.
-      const primaryCt4 = particles.length - Math.ceil(particles.length * 0.06);
-      for (let i = 0; i < primaryCt4; i++) {
-        particles[i].vx *= 0.3;
-        particles[i].vy *= 0.3;
-        particles[i].vz *= 0.3;
-      }
       // Capture current positions so Beat 4 targets blend from here — not from the
       // unrotated cube targets — during the warmup window. This prevents the collapse
       // (particles rushing through the center) that occurs when Beat 3's rotated cube
       // positions are suddenly replaced by Beat 4's unrotated figure targets.
-      const entryPosBuf = new Float32Array(primaryCt4 * 3);
-      for (let i = 0; i < primaryCt4; i++) {
+      const entryPosBuf = new Float32Array(primaryCtForDampen * 3);
+      for (let i = 0; i < primaryCtForDampen; i++) {
         entryPosBuf[i * 3] = particles[i].x;
         entryPosBuf[i * 3 + 1] = particles[i].y;
         entryPosBuf[i * 3 + 2] = particles[i].z;
       }
       beat4EntryPosRef.current = entryPosBuf;
     }
-
-    // Beat 5 entry: dampen (not zero) spring velocities from Beat 4 so particles carry
-    // their current momentum into Beat 5, creating a seamless flow rather than a hard stop.
-    if (beat === 5) {
-      beat5StartTimeRef.current = -1; // initialized on first useFrame tick
-      for (let i = 0; i < particles.length; i++) {
-        particles[i].vx *= 0.3;
-        particles[i].vy *= 0.3;
-        particles[i].vz *= 0.3;
-      }
-    }
-
-    // Reset blend ramp: new beat dynamics engage gradually over transitionDuration seconds
-    // so there are no abrupt snaps — particles coast into the new attractor field.
-    beatTransitionRef.current = 0;
 
     transitionRef.current = {
       active: true,
@@ -1159,15 +1136,6 @@ export default function SceneV2(props: ISceneV2Props) {
         lerpWeightRef.current = trans.toLerpWeight;
       }
     }
-
-    // Ramp beatTransitionRef from 0→1 over transitionDuration seconds so new
-    // beat dynamics engage gradually — lerp alphas and spring strengths are
-    // multiplied by this to prevent snapping at beat entry.
-    beatTransitionRef.current = Math.min(
-      1,
-      beatTransitionRef.current +
-        dt / Math.max(transitionDurationRef.current, 0.05),
-    );
 
     // ── Orbit / primary split (last 6% = orbit, first 94% = primary) ────────
     const orbitCount = Math.ceil(n * 0.06);
@@ -1303,10 +1271,6 @@ export default function SceneV2(props: ISceneV2Props) {
           finalZ + Math.sin(tOscShape * 1.1 + phase * 1.3) * shapeJitter;
       }
 
-      // Advance the Beat 2 warmup (0→1 over 5 s) for a gradual graceful ramp-in.
-      beat2WarmupRef.current = Math.min(1, beat2WarmupRef.current + dt / 5.0);
-      const b2Warmup = beat2WarmupRef.current;
-
       // Only orbit particles use boid flocking in Beat 2 — primary particles use
       // deterministic swirl forces instead, preventing the "gnats" chaotic feeling.
       stepBoids(
@@ -1318,7 +1282,7 @@ export default function SceneV2(props: ISceneV2Props) {
       // Gentle deterministic swirl force around Y axis for primary particles.
       // Gives each particle a continuous rotation as it spirals toward its cube target
       // — leaves slowly spiraling down rather than gnats rushing chaotically.
-      const swirl2Strength = 0.0004 * b2Warmup;
+      const swirl2Strength = 0.0004;
       for (let i = 0; i < primaryCount; i++) {
         const p = particles[i];
         const px = p.x;
@@ -1349,11 +1313,10 @@ export default function SceneV2(props: ISceneV2Props) {
           p.vz *= 0.45;
         }
       } else {
-        // Lerp speed scaled for ~80% convergence by end of beat; warmup ramps from 0
-        // so particles start near-stationary and gracefully spiral into position.
+        // Lerp speed scaled for ~80% convergence by end of beat.
         // fast mode uses a 5× multiplier to preserve the relative "snap" feel.
         const baseLerp2 = 2.3 / Math.max(beatDurationRef.current, 1);
-        const effectiveLerp2 = baseLerp2 * b2Warmup;
+        const effectiveLerp2 = baseLerp2;
         const lerpSpeed2 =
           formTransitionRef.current === "fast"
             ? effectiveLerp2 * 5
@@ -1794,12 +1757,7 @@ export default function SceneV2(props: ISceneV2Props) {
         elapsed,
       );
 
-      // Warmup spring — starts gentle (0.015) and ramps to full (0.08)
-      // over the first 1.5 s to prevent the jarring inward rush at beat entry.
-      const springK4 =
-        beat4Elapsed < warmupDuration4
-          ? 0.008 + (0.08 - 0.008) * (beat4Elapsed / warmupDuration4)
-          : 0.08;
+      const springK4 = 0.08;
       const damping4 = 0.45;
       for (let i = 0; i < primaryCount; i++) {
         const p = particles[i];
@@ -1922,16 +1880,7 @@ export default function SceneV2(props: ISceneV2Props) {
           }
         }
 
-        // Warmup lerp speed: ramp from 0.3 → full 1.2 over 1.5 s so particles
-        // that were still at cube positions in Beat 4 don't rush too abruptly.
-        if (beat5StartTimeRef.current < 0) beat5StartTimeRef.current = elapsed;
-        const beat5Elapsed = elapsed - beat5StartTimeRef.current;
-        const warmupDuration5 = 1.5;
-        const lerpSpeed5Base = getLerpSpeedForBeat(5);
-        const lerpSpeed5 =
-          beat5Elapsed < warmupDuration5
-            ? 0.3 + (lerpSpeed5Base - 0.3) * (beat5Elapsed / warmupDuration5)
-            : lerpSpeed5Base;
+        const lerpSpeed5 = getLerpSpeedForBeat(5);
         const alpha5 =
           (1 - Math.exp(-lerpSpeed5 * dt)) *
           lerpWeightRef.current *

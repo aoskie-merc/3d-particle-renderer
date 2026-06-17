@@ -386,7 +386,7 @@ export default function AppV2() {
   const [hintSweepSpeed, setHintSweepSpeed] = useState(1.0);
   const [revealStages, setRevealStages] = useState(4);
   const [waveSpeed, setWaveSpeed] = useState(1.5);
-  const [transitionDuration, setTransitionDuration] = useState(1.8);
+  const [transitionDuration, setTransitionDuration] = useState(2.25);
   const [particleColor, setParticleColor] = useState("#c8cad4");
 
   // ── Panel state ───────────────────────────────────────────────────────────
@@ -1483,9 +1483,12 @@ export default function AppV2() {
                 </div>
                 <div className={styles.controlRow}>
                   <label className={styles.controlLabel}>
-                    <span>Transition Blend</span>
+                    <span>Velocity Blend</span>
                     <EditableSliderValue
-                      displayValue={`${transitionDuration.toFixed(1)}s`}
+                      displayValue={(
+                        0.2 +
+                        ((transitionDuration - 0.5) / 3.5) * 0.6
+                      ).toFixed(2)}
                       inputDefault={transitionDuration}
                       onCommit={setTransitionDuration}
                       min={0.5}
