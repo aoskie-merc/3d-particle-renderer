@@ -1494,14 +1494,14 @@ export default function SceneV2(props: ISceneV2Props) {
         shapeRotationXRef.current += rotXSpeed3 * (1 - settleSmooth3 * 0.5);
 
         // Steer toward nearest multiple of 2π (full rotation) so the cube looks face-on
-        // at Beat 4 entry. Increased pull strength (0.15) + earlier window (65%) gives
-        // enough time/force to reach the target cleanly without chaos at the transition.
+        // at Beat 4 entry. Gentle pull (0.08) so there is no visible deceleration pause;
+        // the cube holds its residual angle and Beat 4's wave-locked logic takes over.
         const nearestTargetY = Math.round(shapeRotationRef.current / (Math.PI * 2)) * Math.PI * 2;
         const nearestTargetX = Math.round(shapeRotationXRef.current / (Math.PI * 2)) * Math.PI * 2;
         shapeRotationRef.current +=
-          (nearestTargetY - shapeRotationRef.current) * settleSmooth3 * 0.15;
+          (nearestTargetY - shapeRotationRef.current) * settleSmooth3 * 0.08;
         shapeRotationXRef.current +=
-          (nearestTargetX - shapeRotationXRef.current) * settleSmooth3 * 0.15;
+          (nearestTargetX - shapeRotationXRef.current) * settleSmooth3 * 0.08;
       } else {
         shapeRotationRef.current += rotYSpeed3;
         shapeRotationXRef.current += rotXSpeed3;
@@ -1628,17 +1628,11 @@ export default function SceneV2(props: ISceneV2Props) {
 
       const beat4Elapsed = elapsed - beat4StartTimeRef.current;
 
-      // posBlend anchors particle positions from the Beat 3 snapshot faster (1.5 s)
-      // than the rotation settles (2.5 s). This way positions lock in first, then
-      // the cube orientation finishes unwinding — the two effects no longer compound
-      // and produce the wiggle that occurred when both ran over the same 1.0 s window.
-      const POS_BLEND_DURATION_4 = 1.5;
+      // Rotation unwind: smoothstep-decelerate from Beat 3 entry angle to 0
+      // over ROT_UNWIND_DURATION_4 s so there is no sudden orientation snap.
+      // Particles stay locked to the rotating cube until the wave reaches them,
+      // so no posBlend snapshot is needed.
       const ROT_UNWIND_DURATION_4 = 2.5;
-
-      // How much to blend toward entry positions (1.0 at start → 0.0 at POS_BLEND_DURATION_4).
-      // Ensures particles flow from wherever they were in Beat 3 rather than jumping.
-      const posBlend4 = Math.max(0, 1 - beat4Elapsed / POS_BLEND_DURATION_4);
-      const entryPos4 = beat4EntryPosRef.current;
 
       // Smoothstep-decelerate the cube rotation from the Beat 3 entry angle to 0
       // over ROT_UNWIND_DURATION_4 s so there is no sudden orientation snap.
@@ -1699,16 +1693,6 @@ export default function SceneV2(props: ISceneV2Props) {
           p.targetZ = cubeZ4 * (1 - t4) + p.homeZ * t4;
         }
 
-        // Blend targets toward entry positions during warmup so particles start
-        // exactly where they were in Beat 3 and flow smoothly — no collapse.
-        if (posBlend4 > 0 && entryPos4.length >= primaryCount * 3) {
-          const eo = i * 3;
-          p.targetX = p.targetX * (1 - posBlend4) + entryPos4[eo] * posBlend4;
-          p.targetY =
-            p.targetY * (1 - posBlend4) + entryPos4[eo + 1] * posBlend4;
-          p.targetZ =
-            p.targetZ * (1 - posBlend4) + entryPos4[eo + 2] * posBlend4;
-        }
       }
 
       stepBoids(
@@ -1717,13 +1701,10 @@ export default function SceneV2(props: ISceneV2Props) {
         elapsed,
       );
 
-      // Smooth damped lerp toward figure home — ramp from Beat 3's final lerp
-      // rate (0.03) down to Beat 4's target rate (0.02) over 2 s so the
-      // Hint→Reveal transition doesn't feel like a sudden deceleration jerk.
-      const LERP_RATE_END_3_B4 = 0.03;
-      const LERP_RATE_BEAT4_TARGET = 0.02;
-      const beat4LerpWarmup = Math.min(1, beat4Elapsed / 2.0);
-      const lerpRate4 = lerp(LERP_RATE_END_3_B4, LERP_RATE_BEAT4_TARGET, beat4LerpWarmup);
+      // Constant lerp rate matching Beat 3's final rate — no warmup ramp needed
+      // since particles stay locked to their cube positions (not traveling to new
+      // targets) until the wave reaches them, so there is no deceleration jerk.
+      const lerpRate4 = 0.03;
       for (let i = 0; i < primaryCount; i++) {
         const p = particles[i];
         p.x += (p.targetX - p.x) * lerpRate4;
