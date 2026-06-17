@@ -1050,19 +1050,12 @@ export default function SceneV2(props: ISceneV2Props) {
       beat === 3 ? sortedCubeTargetsRef.current : cubeTargetsRef.current,
     );
 
-    // One-time velocity dampen at beat entry: preserves momentum direction while
-    // reducing magnitude for a smooth handoff without a ramp-up delay.
-    // transitionDuration slider (0.5–4.0) maps to a dampening factor (0.2–0.8).
-    // Beat 3 (Form→Hint) uses a very gentle 0.9× factor so momentum from Beat 2
-    // carries over naturally — aggressive dampening would create a visible snap
-    // since cube targets are identical at transition (no position jump to hide it).
-    const velocityDampenFactor =
-      beat === 3
-        ? 0.9
-        : 0.2 +
-          ((Math.max(0.5, Math.min(transitionDurationRef.current, 4.0)) - 0.5) /
-            3.5) *
-            0.6;
+    // Preserve almost all momentum at beat entry (0.95×) so particles carry
+    // their velocity through transitions. The previous formula (~0.5× at default
+    // transitionDuration) was the root cause of the "slow Swirl In" (Beat 0→1)
+    // and "speed burst at Form" (Beat 1→2) sensations: damping wiped out
+    // momentum, then the higher lerp rate in Beat 2 felt like a sudden lurch.
+    const velocityDampenFactor = 0.95;
     const primaryCtForDampen =
       particles.length - Math.ceil(particles.length * 0.06);
     const MICRO_V_THRESHOLD = 0.0005;
@@ -1381,9 +1374,17 @@ export default function SceneV2(props: ISceneV2Props) {
 
       // Smooth damped lerp toward rotated cube target — uses p.targetX/Y/Z which
       // already have the rotation matrix applied (computed in the loop above).
-      // Previously this lerped toward unrotated sortedCubeTargetsRef directly,
-      // which discarded the rotation and made the cube appear static in Beat 2.
-      const lerpRate2 = 0.025;
+      // Ramp from Beat 1's approximate effective alpha (~0.009/frame at default
+      // beatDuration=8) up to Beat 2's steady-state rate over 3 s so there is no
+      // sudden speed burst when transitioning from Swirl In to Form.
+      const LERP_RATE_BEAT1_APPROX = 0.009;
+      const LERP_RATE_BEAT2_TARGET = 0.025;
+      const beat2Warmup = Math.min(1, beat2Elapsed / 3.0);
+      const lerpRate2 = lerp(
+        LERP_RATE_BEAT1_APPROX,
+        LERP_RATE_BEAT2_TARGET,
+        beat2Warmup * beat2Warmup,
+      );
       for (let i = 0; i < primaryCount; i++) {
         const p = particles[i];
         p.x += (p.targetX - p.x) * lerpRate2;
@@ -1670,8 +1671,13 @@ export default function SceneV2(props: ISceneV2Props) {
         elapsed,
       );
 
-      // Smooth damped lerp toward figure home — very slow reveal flow, no overshoot
-      const lerpRate4 = 0.02;
+      // Smooth damped lerp toward figure home — ramp from Beat 3's final lerp
+      // rate (0.03) down to Beat 4's target rate (0.02) over 2 s so the
+      // Hint→Reveal transition doesn't feel like a sudden deceleration jerk.
+      const LERP_RATE_END_3_B4 = 0.03;
+      const LERP_RATE_BEAT4_TARGET = 0.02;
+      const beat4LerpWarmup = Math.min(1, beat4Elapsed / 2.0);
+      const lerpRate4 = lerp(LERP_RATE_END_3_B4, LERP_RATE_BEAT4_TARGET, beat4LerpWarmup);
       for (let i = 0; i < primaryCount; i++) {
         const p = particles[i];
         p.x += (p.targetX - p.x) * lerpRate4;
