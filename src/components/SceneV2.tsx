@@ -542,6 +542,8 @@ export default function SceneV2(props: ISceneV2Props) {
 
   const shapeRotationRef = useRef(0);
   const shapeRotationXRef = useRef(0);
+  /** Z-axis rotation accumulated during Beat 4 Reveal; reset to 0 at Beat 4 entry. */
+  const shapeRotationZRef = useRef(0);
   /** Cube rotation Y-angle at the moment Beat 4 begins — used to smoothly wind down to 0. */
   const beat4EntryRotYRef = useRef(0);
   /** Cube rotation X-angle at the moment Beat 4 begins — used to smoothly wind down to 0. */
@@ -1116,6 +1118,7 @@ export default function SceneV2(props: ISceneV2Props) {
       // instead of jumping to the unrotated cube targets and causing a rush/collapse.
       beat4EntryRotYRef.current = shapeRotationRef.current;
       beat4EntryRotXRef.current = shapeRotationXRef.current;
+      shapeRotationZRef.current = 0; // Z rotation starts fresh at Beat 4 entry
       beat4StartTimeRef.current = -1; // reset; initialized on first useFrame tick
       revealStageRef.current = 0;
       lastRevealStageRef.current = -1;
@@ -1608,9 +1611,20 @@ export default function SceneV2(props: ISceneV2Props) {
 
       const beat4Elapsed = elapsed - beat4StartTimeRef.current;
 
-      // Constant rotation throughout Reveal — same speed as Beat 3, no deceleration.
-      shapeRotationRef.current += 0.00225;
-      shapeRotationXRef.current += 0.00075;
+      // Over the first BLEND_DURATION_4 seconds, smoothly hand off from the Y+X
+      // rotation used in Beat 3 / Hint to a subtle Z-only rotation, avoiding any
+      // sudden orientation snap at the beat boundary.
+      const BLEND_DURATION_4 = 3.0;
+      const blendT4 = Math.min(1, beat4Elapsed / BLEND_DURATION_4);
+      const blendSmooth4 = blendT4 * blendT4 * (3 - 2 * blendT4); // smoothstep
+
+      const rotYSpeed4 = 0.00225 * (1 - blendSmooth4);
+      const rotXSpeed4 = 0.00075 * (1 - blendSmooth4);
+      const rotZSpeed4 = 0.0008 * blendSmooth4;
+
+      shapeRotationRef.current += rotYSpeed4;
+      shapeRotationXRef.current += rotXSpeed4;
+      shapeRotationZRef.current += rotZSpeed4;
 
       const rotY4 = shapeRotationRef.current;
       const rotX4 = shapeRotationXRef.current;
@@ -1618,6 +1632,8 @@ export default function SceneV2(props: ISceneV2Props) {
       const sinY4 = isFinite(rotY4) ? Math.sin(rotY4) : 0;
       const cosX4 = isFinite(rotX4) ? Math.cos(rotX4) : 1;
       const sinX4 = isFinite(rotX4) ? Math.sin(rotX4) : 0;
+      const cosZ4 = Math.cos(shapeRotationZRef.current);
+      const sinZ4 = Math.sin(shapeRotationZRef.current);
 
       const figJitter4 = 0.006;
       const tOscFig4 = elapsed * 0.5;
@@ -1648,12 +1664,17 @@ export default function SceneV2(props: ISceneV2Props) {
           const baseX4 = sortedTargets4[o];
           const baseY4 = sortedTargets4[o + 1];
           const baseZ4 = sortedTargets4[o + 2];
+          // Y rotation then X rotation (same as Beat 3)
           const rx4 = cosY4 * baseX4 - sinY4 * baseZ4;
           const ry4 = baseY4;
           const rz4 = sinY4 * baseX4 + cosY4 * baseZ4;
-          const cubeX4 = rx4;
-          const cubeY4 = cosX4 * ry4 - sinX4 * rz4;
-          const cubeZ4 = sinX4 * ry4 + cosX4 * rz4;
+          const yx4X = rx4;
+          const yx4Y = cosX4 * ry4 - sinX4 * rz4;
+          const yx4Z = sinX4 * ry4 + cosX4 * rz4;
+          // Z rotation applied last (fades in over BLEND_DURATION_4)
+          const cubeX4 = cosZ4 * yx4X - sinZ4 * yx4Y;
+          const cubeY4 = sinZ4 * yx4X + cosZ4 * yx4Y;
+          const cubeZ4 = yx4Z;
 
           const waveEdge4 = waveRadius4 - distFromOrigin4;
           const rawFrac4 = Math.max(0, Math.min(1, waveEdge4 / waveWidth4));
