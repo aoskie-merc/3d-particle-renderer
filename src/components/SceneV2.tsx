@@ -1279,75 +1279,70 @@ export default function SceneV2(props: ISceneV2Props) {
         elapsed,
       );
 
-      // Gentle deterministic swirl force around Y axis for primary particles.
-      // Gives each particle a continuous rotation as it spirals toward its cube target
-      // — leaves slowly spiraling down rather than gnats rushing chaotically.
-      const swirl2Strength = 0.0004;
+      // ── Inward spiral toward cube positions ───────────────────────────────
+      // Combines tangential rotation around Y, radial pull toward target radius,
+      // and gentle Y pull — particles gracefully drain into cube positions rather
+      // than bursting chaotically.
       for (let i = 0; i < primaryCount; i++) {
         const p = particles[i];
-        const px = p.x;
-        const pz = p.z;
-        const dist2d = Math.sqrt(px * px + pz * pz) + 0.001;
-        const tx = -pz / dist2d;
-        const tz = px / dist2d;
-        p.vx += tx * swirl2Strength;
-        p.vz += tz * swirl2Strength;
-      }
+        const i3 = i * 3;
 
-      if (formTransitionRef.current === "cascade") {
-        if (beat2StartTimeRef.current < 0) beat2StartTimeRef.current = elapsed;
-        const beat2Elapsed = elapsed - beat2StartTimeRef.current;
-        for (let i = 0; i < primaryCount; i++) {
-          const delay = (i / Math.max(primaryCount - 1, 1)) * 8.0;
-          const effectiveElapsed = Math.max(0, beat2Elapsed - delay);
-          const cascadeAlpha =
-            (1 - Math.exp(-0.8 * effectiveElapsed)) *
-            lerpWeightRef.current *
-            beatTransitionRef.current;
-          const p = particles[i];
-          p.x += (p.targetX - p.x) * cascadeAlpha;
-          p.y += (p.targetY - p.y) * cascadeAlpha;
-          p.z += (p.targetZ - p.z) * cascadeAlpha;
-          p.vx *= 0.45;
-          p.vy *= 0.45;
-          p.vz *= 0.45;
-        }
-      } else {
-        // Lerp speed scaled for ~80% convergence by end of beat.
-        // fast mode uses a 5× multiplier to preserve the relative "snap" feel.
-        const baseLerp2 = 2.3 / Math.max(beatDurationRef.current, 1);
-        const effectiveLerp2 = baseLerp2;
-        const lerpSpeed2 =
-          formTransitionRef.current === "fast"
-            ? effectiveLerp2 * 5
-            : effectiveLerp2;
-        const shapeAlpha2 =
-          (1 - Math.exp(-lerpSpeed2 * dt)) *
-          lerpWeightRef.current *
-          beatTransitionRef.current;
-        for (let i = 0; i < primaryCount; i++) {
-          const p = particles[i];
-          p.x += (p.targetX - p.x) * shapeAlpha2;
-          p.y += (p.targetY - p.y) * shapeAlpha2;
-          p.z += (p.targetZ - p.z) * shapeAlpha2;
-          p.vx *= 0.45;
-          p.vy *= 0.45;
-          p.vz *= 0.45;
+        // Target cube position (spatially matched, pre-rotation)
+        const tcx = sortedCubeTargetsRef.current[i3];
+        const tcy = sortedCubeTargetsRef.current[i3 + 1];
+        const tcz = sortedCubeTargetsRef.current[i3 + 2];
+
+        // Current XZ distance from Y axis
+        const px = p.x,
+          pz = p.z;
+        const r = Math.sqrt(px * px + pz * pz) + 0.0001;
+
+        // 1. Tangential rotation force (around Y axis, counter-clockwise from above)
+        const swirlStrength = 0.0006;
+        const tx = -pz / r;
+        const tz = px / r;
+        p.vx += tx * swirlStrength;
+        p.vz += tz * swirlStrength;
+
+        // 2. Inward radial force — pulls particles toward target XZ radius
+        const targetR = Math.sqrt(tcx * tcx + tcz * tcz) + 0.0001;
+        const radialPull = (targetR - r) * 0.003;
+        p.vx += (px / r) * radialPull;
+        p.vz += (pz / r) * radialPull;
+
+        // 3. Y-axis pull toward target height (slow, gentle)
+        const yPull = (tcy - p.y) * 0.008;
+        p.vy += yPull;
+
+        // 4. Speed cap — keep motion deliberate
+        const spd = Math.sqrt(p.vx * p.vx + p.vy * p.vy + p.vz * p.vz);
+        const speedLimit = 0.001;
+        if (spd > speedLimit) {
+          p.vx *= speedLimit / spd;
+          p.vy *= speedLimit / spd;
+          p.vz *= speedLimit / spd;
         }
       }
 
-      // Speed cap for primary particles: much lower than orbit particles to prevent
-      // the chaotic "gnats" feel — particles move gracefully toward their targets.
-      const BEAT2_SPEED_LIMIT = 0.0008;
+      // Spring toward cube target — smooth settling with no position snap
+      const springK2 = 0.018;
+      const damp2 = 0.88;
       for (let i = 0; i < primaryCount; i++) {
         const p = particles[i];
-        const speed2 = Math.sqrt(p.vx * p.vx + p.vy * p.vy + p.vz * p.vz);
-        if (speed2 > BEAT2_SPEED_LIMIT) {
-          const scale = BEAT2_SPEED_LIMIT / speed2;
-          p.vx *= scale;
-          p.vy *= scale;
-          p.vz *= scale;
-        }
+        const i3 = i * 3;
+        const tcx = sortedCubeTargetsRef.current[i3];
+        const tcy = sortedCubeTargetsRef.current[i3 + 1];
+        const tcz = sortedCubeTargetsRef.current[i3 + 2];
+
+        p.vx += (tcx - p.x) * springK2;
+        p.vy += (tcy - p.y) * springK2;
+        p.vz += (tcz - p.z) * springK2;
+        p.vx *= damp2;
+        p.vy *= damp2;
+        p.vz *= damp2;
+        p.x += p.vx;
+        p.y += p.vy;
+        p.z += p.vz;
       }
 
       // Center-repulsion: keeps particles from passing through the cube center.
