@@ -553,6 +553,12 @@ export default function SceneV2(props: ISceneV2Props) {
   // ── Beat 4 multi-wave reveal state ────────────────────────────────────────
 
   const beat4StartTimeRef = useRef(-1);
+  /** Accumulated Y rotation angle at the moment Beat 4 begins. Applied to cube
+   *  targets throughout Beat 4 so the cube starts at the exact angle it had at
+   *  the end of Hint — no flip at the Hint→Reveal boundary. */
+  const beat4EntryRotYRef = useRef(0);
+  /** Accumulated X rotation angle at the moment Beat 4 begins (see beat4EntryRotYRef). */
+  const beat4EntryRotXRef = useRef(0);
   const wave1SetRef = useRef<Set<number>>(new Set());
   const sessionSeedRef = useRef(Math.floor(Math.random() * 1_000_000));
 
@@ -1108,6 +1114,12 @@ export default function SceneV2(props: ISceneV2Props) {
     if (beat === 4) {
       beat4StartTimeRef.current = -1; // reset; initialized on first useFrame tick
       revealStageRef.current = 0;
+      // Capture the rotation angle at Beat 4 entry so cube targets in Beat 4
+      // are displayed at the same angle the cube had at the end of Hint.
+      // Without this capture, Beat 4 uses unrotated (angle=0) cube positions
+      // while Beat 3 ended with accumulated rotation — causing a visible flip.
+      beat4EntryRotYRef.current = shapeRotationRef.current;
+      beat4EntryRotXRef.current = shapeRotationXRef.current;
       lastRevealStageRef.current = -1;
       // Start the wave near-zero so no particles solidify on frame 1 (avoids the
       // visible burst caused by hundreds of particles simultaneously switching to
@@ -1602,9 +1614,15 @@ export default function SceneV2(props: ISceneV2Props) {
 
       const beat4Elapsed = elapsed - beat4StartTimeRef.current;
 
-      // No rotation during Reveal — the cube is frozen at its default (unrotated)
-      // orientation. Beat 3's deceleration ensures the cube enters Beat 4 nearly
-      // stationary, so there is no snap at the beat boundary.
+      // The cube is held at the rotation angle captured at Beat 4 entry so it
+      // starts exactly where Hint left off — no flip at the beat boundary.
+      // Beat 3's deceleration ensures the cube is nearly stationary by the time
+      // Beat 4 begins, so the frozen angle reads as a smooth continuation.
+      const cosY4 = Math.cos(beat4EntryRotYRef.current);
+      const sinY4 = Math.sin(beat4EntryRotYRef.current);
+      const cosX4 = Math.cos(beat4EntryRotXRef.current);
+      const sinX4 = Math.sin(beat4EntryRotXRef.current);
+
       const figJitter4 = 0.006;
       const tOscFig4 = elapsed * 0.5;
 
@@ -1627,11 +1645,19 @@ export default function SceneV2(props: ISceneV2Props) {
           p.targetZ =
             p.homeZ + Math.sin(tOscFig4 * 1.1 + phase * 1.3) * figJitter4;
         } else {
-          // Wave front or not yet reached: lerp between cube target and home.
-          // Cube targets are unrotated — no rotation is applied during Reveal.
-          const cubeX4 = sortedTargets4[o];
-          const cubeY4 = sortedTargets4[o + 1];
-          const cubeZ4 = sortedTargets4[o + 2];
+          // Wave front or not yet reached: lerp between rotated cube target and home.
+          // Apply the Beat 4 entry rotation so the cube starts at the same angle
+          // as the end of Hint — prevents the flip caused by jumping from
+          // rotation(accumulated_angle)*cubePos to unrotated cubePos on frame 1.
+          const baseX4 = sortedTargets4[o];
+          const baseY4 = sortedTargets4[o + 1];
+          const baseZ4 = sortedTargets4[o + 2];
+          const rx4 = cosY4 * baseX4 - sinY4 * baseZ4;
+          const ry4 = baseY4;
+          const rz4 = sinY4 * baseX4 + cosY4 * baseZ4;
+          const cubeX4 = rx4;
+          const cubeY4 = cosX4 * ry4 - sinX4 * rz4;
+          const cubeZ4 = sinX4 * ry4 + cosX4 * rz4;
 
           const waveEdge4 = waveRadius4 - distFromOrigin4;
           const rawFrac4 = Math.max(0, Math.min(1, waveEdge4 / waveWidth4));
