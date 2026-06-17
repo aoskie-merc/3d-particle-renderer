@@ -311,7 +311,7 @@ function applyRotationToHomes(
   cz /= written;
   // Lift the figure upward so the full body is visible in frame
   // (centroid is near the waist; without a lift, lower body is clipped)
-  const FIGURE_Y_LIFT = 0.6;
+  const FIGURE_Y_LIFT = 1.2;
   for (let i = 0; i < written; i++) {
     particles[i].homeX -= cx;
     particles[i].homeY -= cy - FIGURE_Y_LIFT;
@@ -511,14 +511,6 @@ export default function SceneV2(props: ISceneV2Props) {
   const hintPhaseRef = useRef(0.0);
   /** Beat 3: clock time when Beat 3 started (for hint phase calculation). */
   const beat3StartTimeRef = useRef(-1);
-  /** Beat 3: current morphFraction (0–maxMorphFraction); updated every frame for smooth Beat 4 handoff. */
-  const beat3MorphFractionRef = useRef(0);
-  /** Beat 3: slowly rotating attention direction used for spatial variation. */
-  const beat3AttentionCentroidRef = useRef(new Vector3());
-  /** Beat 3: low-pass filtered attention direction for Searching mode (prevents sudden jumps). */
-  const beat3AttentionRef = useRef({ x: 0, y: 1, z: 0 });
-  /** Beat 3: per-particle curvature + prominence weights (0–1); computed at beat entry. */
-  const beat3ParticleWeightsRef = useRef(new Float32Array(0));
   /** Beat 4: current active reveal stage (region index, 0 = first to emerge). */
   const revealStageRef = useRef(0);
   /** Beat 4: last stage index that triggered debris scatter (prevents repeat). */
