@@ -399,6 +399,9 @@ export default function AppV2() {
   const [debugRotY, setDebugRotY] = useState(0.01);
   const [debugRotZ, setDebugRotZ] = useState(-0.19);
   const [figureScale, setFigureScale] = useState(1.66);
+  const [figurePosX, setFigurePosX] = useState(0);
+  const [figurePosY, setFigurePosY] = useState(0.9);
+  const [figurePosZ, setFigurePosZ] = useState(0);
 
   // ── Text overlay state ────────────────────────────────────────────────────
   const [displayedOverlay, setDisplayedOverlay] = useState<IOverlayContent>(
@@ -773,6 +776,9 @@ export default function AppV2() {
             orbitEnabled={beat === 5}
             debugMeshRotation={{ x: debugRotX, y: debugRotY, z: debugRotZ }}
             figureScale={figureScale}
+            figurePosX={figurePosX}
+            figurePosY={figurePosY}
+            figurePosZ={figurePosZ}
             cubeScale={cubeScale}
             hintCycles={hintCycles}
             hintStyle={hintStyle}
@@ -1631,6 +1637,69 @@ export default function AppV2() {
                     step={0.01}
                     value={figureScale}
                     onChange={(e) => setFigureScale(parseFloat(e.target.value))}
+                  />
+                </div>
+                <div className={styles.controlRow}>
+                  <label className={styles.controlLabel}>
+                    <span>Position X</span>
+                    <EditableSliderValue
+                      displayValue={figurePosX.toFixed(2)}
+                      inputDefault={figurePosX}
+                      onCommit={setFigurePosX}
+                      min={-2}
+                      max={2}
+                    />
+                  </label>
+                  <input
+                    className={styles.slider}
+                    type="range"
+                    min={-2}
+                    max={2}
+                    step={0.05}
+                    value={figurePosX}
+                    onChange={(e) => setFigurePosX(parseFloat(e.target.value))}
+                  />
+                </div>
+                <div className={styles.controlRow}>
+                  <label className={styles.controlLabel}>
+                    <span>Position Y</span>
+                    <EditableSliderValue
+                      displayValue={figurePosY.toFixed(2)}
+                      inputDefault={figurePosY}
+                      onCommit={setFigurePosY}
+                      min={-1}
+                      max={3}
+                    />
+                  </label>
+                  <input
+                    className={styles.slider}
+                    type="range"
+                    min={-1}
+                    max={3}
+                    step={0.05}
+                    value={figurePosY}
+                    onChange={(e) => setFigurePosY(parseFloat(e.target.value))}
+                  />
+                </div>
+                <div className={styles.controlRow}>
+                  <label className={styles.controlLabel}>
+                    <span>Position Z</span>
+                    <EditableSliderValue
+                      displayValue={figurePosZ.toFixed(2)}
+                      inputDefault={figurePosZ}
+                      onCommit={setFigurePosZ}
+                      min={-2}
+                      max={2}
+                    />
+                  </label>
+                  <input
+                    className={styles.slider}
+                    type="range"
+                    min={-2}
+                    max={2}
+                    step={0.05}
+                    value={figurePosZ}
+                    onChange={(e) => setFigurePosZ(parseFloat(e.target.value))}
                   />
                 </div>
               </div>
