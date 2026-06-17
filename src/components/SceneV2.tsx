@@ -1110,7 +1110,7 @@ export default function SceneV2(props: ISceneV2Props) {
 
   useEffect(() => {
     if (!orbitEnabled || !orbitControlsRef.current) return;
-    orbitControlsRef.current.target.set(0, 0.2, 0);
+    orbitControlsRef.current.target.set(0, 0.5, 0);
   }, [orbitEnabled]);
 
   // ── Per-frame simulation ──────────────────────────────────────────────────
@@ -2042,7 +2042,7 @@ export default function SceneV2(props: ISceneV2Props) {
         camTargetRef.current.set(tx, ty, tz);
         state.camera.position.lerp(camTargetRef.current, 0.02);
         // Beat 0: look straight at the ring center (Y=0); other beats: slight upward offset
-        state.camera.lookAt(0, currentBeat === 0 ? 0 : 0.2, 0);
+        state.camera.lookAt(0, currentBeat === 0 ? 0 : 0.5, 0);
       }
     }
 
