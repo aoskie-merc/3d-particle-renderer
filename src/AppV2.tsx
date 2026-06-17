@@ -9,6 +9,7 @@ import type {
   TDepthOpacityMode,
   THintShape,
   THintStyle,
+  THintClarity,
 } from "./types";
 import SceneV2 from "./components/SceneV2";
 import styles from "./AppV2.module.css";
@@ -366,6 +367,7 @@ export default function AppV2() {
     useState<TDepthOpacityMode>("off");
   const [cubeScale, setCubeScale] = useState(1.5);
   const [hintCycles, setHintCycles] = useState(3);
+  const [hintClarity, setHintClarity] = useState<THintClarity>("whisper");
   const [hintStyle, setHintStyle] = useState<THintStyle>("bulge");
   const [hintSpread, setHintSpread] = useState(0.54);
   const [hintShape, setHintShape] = useState<THintShape>("blob");
@@ -387,7 +389,7 @@ export default function AppV2() {
   const [debugRotX, setDebugRotX] = useState(-1.59);
   const [debugRotY, setDebugRotY] = useState(0.01);
   const [debugRotZ, setDebugRotZ] = useState(-0.19);
-  const [figureScale, setFigureScale] = useState(2.0);
+  const [figureScale, setFigureScale] = useState(1.66);
 
   // ── Text overlay state ────────────────────────────────────────────────────
   const [displayedOverlay, setDisplayedOverlay] = useState<IOverlayContent>(
@@ -761,6 +763,7 @@ export default function AppV2() {
             figureScale={figureScale}
             cubeScale={cubeScale}
             hintCycles={hintCycles}
+            hintClarity={hintClarity}
             hintStyle={hintStyle}
             hintSpread={hintSpread}
             hintShape={hintShape}
@@ -1281,28 +1284,22 @@ export default function AppV2() {
                   </div>
                 </div>
                 <div className={styles.controlRow}>
-                  <label className={styles.controlLabel}>
-                    <span>Hint Cycles</span>
-                    <EditableSliderValue
-                      displayValue={String(hintCycles)}
-                      inputDefault={hintCycles}
-                      onCommit={(v) => setHintCycles(Math.round(v))}
-                      min={1}
-                      max={4}
-                      parse={(s) => parseInt(s, 10)}
-                    />
-                  </label>
-                  <input
-                    className={styles.slider}
-                    type="range"
-                    min={1}
-                    max={4}
-                    step={1}
-                    value={hintCycles}
-                    onChange={(e) =>
-                      setHintCycles(parseInt(e.target.value, 10))
-                    }
-                  />
+                  <span className={styles.controlLabelText}>Hint Clarity</span>
+                  <div className={styles.segmented}>
+                    {(["whisper", "subtle", "suggestive"] as const).map((m) => (
+                      <button
+                        key={m}
+                        className={`${styles.segmentBtn} ${hintClarity === m ? styles.segmentBtnActive : ""}`}
+                        onClick={() => setHintClarity(m)}
+                      >
+                        {m === "whisper"
+                          ? "Whisper"
+                          : m === "subtle"
+                            ? "Subtle"
+                            : "Suggestive"}
+                      </button>
+                    ))}
+                  </div>
                 </div>
                 <div className={styles.controlRow}>
                   <span className={styles.controlLabelText}>Hint Style</span>
