@@ -173,6 +173,11 @@ function cubicEase(t: number): number {
   return t * t * (3 - 2 * t);
 }
 
+/** Quintic ease in-out for maximum smoothness in corner compression / spring. */
+function quinticEase(t: number): number {
+  return t * t * t * (t * (t * 6 - 15) + 10);
+}
+
 // ── Types ─────────────────────────────────────────────────────────────────────
 
 interface ITransitionState {
@@ -1333,26 +1338,16 @@ export default function SceneV2(props: ISceneV2Props) {
         p.z += (p.targetZ - p.z) * orbitAlpha2;
       }
     } else if (currentBeat === 3) {
-      // ── Beat 3: Hint — cube melting/dissolving into organic blob ───────────
+      // ── Beat 3: Hint — sequential corner compression ───────────────────────
       //
-      // The rigid cube loses form entirely: edges dissolve, corners round,
-      // particles settle on an expanding noisy sphere. No figure shape is
-      // referenced — purely a deformation/dissolution narrative.
+      // The cube stays crisp and structured. One corner at a time is pulled
+      // inward toward the center, held briefly, then springs back — like the
+      // shape is being examined and refined edge-by-edge. Narrative: your
+      // business is coming into focus.
 
       if (beat3StartTimeRef.current < 0) beat3StartTimeRef.current = elapsed;
       const beat3Elapsed = elapsed - beat3StartTimeRef.current;
       hintPhaseRef.current = beat3Elapsed;
-
-      // meltProgress: 0 → 1 over beatDuration, scaled by hintMeltSpeed
-      const meltProgress = Math.min(
-        1,
-        (beat3Elapsed * hintMeltSpeedRef.current) /
-          Math.max(beatDurationRef.current, 1),
-      );
-
-      // Slow global pulse — blob gently breathes as it melts
-      const globalPulse =
-        1.0 + Math.sin(beat3Elapsed * 0.8) * 0.03 * meltProgress;
 
       // Cube continues to rotate (same as Beat 2)
       shapeRotationRef.current += 0.003 * dt * 60;
@@ -1367,77 +1362,110 @@ export default function SceneV2(props: ISceneV2Props) {
           ? sortedCubeTargetsRef.current
           : cubeTargetsRef.current;
 
-      // Approx distance from origin to a cube corner
-      const maxDist3 = cubeScaleRef.current * 0.87;
+      // Corner compression timing: cycle through all 8 corners, hintCycles times
+      const TOTAL_CORNERS_3 = Math.max(hintCyclesRef.current, 1) * 8;
+      const timePerCorner3 =
+        Math.max(beatDurationRef.current, 1) / TOTAL_CORNERS_3;
+
+      // Which corner slot are we in, and how far through it (0→1)
+      const cornerSlotRaw = beat3Elapsed / timePerCorner3;
+      const activeCorner3 = Math.floor(cornerSlotRaw) % 8;
+      const cornerLocalT = cornerSlotRaw - Math.floor(cornerSlotRaw);
+
+      // Phase fractions within each corner slot:
+      //   0.0 → 0.4  compress inward (quintic ease in)
+      //   0.4 → 0.5  hold at max compression
+      //   0.5 → 0.9  spring back to crisp position (quintic ease out)
+      //   0.9 → 1.0  gap — cube rests at its normal position
+      const COMPRESS_END_3 = 0.4;
+      const HOLD_END_3 = 0.5;
+      const SPRING_END_3 = 0.9;
+      const MAX_PULL_3 = 0.35;
+
+      let pullFraction3 = 0;
+      if (cornerLocalT < COMPRESS_END_3) {
+        pullFraction3 = quinticEase(cornerLocalT / COMPRESS_END_3) * MAX_PULL_3;
+      } else if (cornerLocalT < HOLD_END_3) {
+        pullFraction3 = MAX_PULL_3;
+      } else if (cornerLocalT < SPRING_END_3) {
+        const springT =
+          (cornerLocalT - HOLD_END_3) / (SPRING_END_3 - HOLD_END_3);
+        pullFraction3 = (1 - quinticEase(springT)) * MAX_PULL_3;
+      }
+
+      // Active corner sign pattern from bit index (bit 0=X, bit 1=Y, bit 2=Z)
+      const cornerSX3 = (activeCorner3 & 1) === 0 ? -1 : 1;
+      const cornerSY3 = (activeCorner3 & 2) === 0 ? -1 : 1;
+      const cornerSZ3 = (activeCorner3 & 4) === 0 ? -1 : 1;
+
+      // Half-side length of the cube; corner threshold = outer 40% per axis
+      const halfSide3 = cubeScaleRef.current / 2;
+      const cornerThreshold3 = 0.6 * halfSide3;
 
       for (let i = 0; i < primaryCount; i++) {
         const i3 = i * 3;
         const p = particles[i];
 
-        // Base cube target (spatially matched), rotated to current spin angle
         const baseX = sortedTargets3[i3];
         const baseY = sortedTargets3[i3 + 1];
         const baseZ = sortedTargets3[i3 + 2];
-        const rx3 = cosY3 * baseX - sinY3 * baseZ;
-        const ry3 = baseY;
-        const rz3 = sinY3 * baseX + cosY3 * baseZ;
-        const cubeX = rx3;
-        const cubeY = cosX3 * ry3 - sinX3 * rz3;
-        const cubeZ = sinX3 * ry3 + cosX3 * rz3;
 
-        // Corners deform more than face centers
-        const distFromOrigin = Math.sqrt(
-          cubeX * cubeX + cubeY * cubeY + cubeZ * cubeZ,
-        );
-        const cornerFactor = Math.min(
-          1,
-          distFromOrigin / Math.max(maxDist3, 0.001),
-        );
-        const cornerScale = 0.5 + 0.5 * cornerFactor;
+        // A corner particle has all three coords in the outer ~40% of the cube
+        const isCorner3 =
+          Math.abs(baseX) > cornerThreshold3 &&
+          Math.abs(baseY) > cornerThreshold3 &&
+          Math.abs(baseZ) > cornerThreshold3;
 
-        // Per-particle bounded organic noise — max 18% of cube scale at full melt
-        const noisePhase = i * 2.399;
-        const maxNoiseAmp =
-          cubeScaleRef.current * 0.18 * meltProgress * globalPulse;
-        const noiseX =
-          Math.sin(noisePhase + beat3Elapsed * 0.25) *
-          maxNoiseAmp *
-          cornerScale;
-        const noiseY =
-          Math.cos(noisePhase * 1.3 + beat3Elapsed * 0.18) *
-          maxNoiseAmp *
-          cornerScale;
-        const noiseZ =
-          Math.sin(noisePhase * 0.7 + beat3Elapsed * 0.32) *
-          maxNoiseAmp *
-          cornerScale;
+        // Does this particle's sign pattern match the active corner?
+        const matchesActiveCorner3 =
+          isCorner3 &&
+          baseX >= 0 === cornerSX3 > 0 &&
+          baseY >= 0 === cornerSY3 > 0 &&
+          baseZ >= 0 === cornerSZ3 > 0;
 
-        // Target is cube position + small bounded noise — particles stay cohesive
-        const targetX = cubeX + noiseX;
-        const targetY = cubeY + noiseY;
-        const targetZ = cubeZ + noiseZ;
+        // Pull matching corner particles toward cube center
+        const cubeTargetX3 = matchesActiveCorner3
+          ? baseX * (1 - pullFraction3)
+          : baseX;
+        const cubeTargetY3 = matchesActiveCorner3
+          ? baseY * (1 - pullFraction3)
+          : baseY;
+        const cubeTargetZ3 = matchesActiveCorner3
+          ? baseZ * (1 - pullFraction3)
+          : baseZ;
 
-        // Smooth damped lerp toward deformed cube target — no spring overshoot
+        // Rotate to current cube spin angle
+        const rx3 = cosY3 * cubeTargetX3 - sinY3 * cubeTargetZ3;
+        const ry3 = cubeTargetY3;
+        const rz3 = sinY3 * cubeTargetX3 + cosY3 * cubeTargetZ3;
+        const finalX3 = rx3;
+        const finalY3 = cosX3 * ry3 - sinX3 * rz3;
+        const finalZ3 = sinX3 * ry3 + cosX3 * rz3;
+
+        // Smooth damped lerp toward crisp cube target — no spring overshoot
         const lerpRate3 = 0.03;
-        p.x += (targetX - p.x) * lerpRate3;
-        p.y += (targetY - p.y) * lerpRate3;
-        p.z += (targetZ - p.z) * lerpRate3;
+        p.x += (finalX3 - p.x) * lerpRate3;
+        p.y += (finalY3 - p.y) * lerpRate3;
+        p.z += (finalZ3 - p.z) * lerpRate3;
         p.vx *= 0.85;
         p.vy *= 0.85;
         p.vz *= 0.85;
       }
 
-      // Swarm/orbit particles: lerp toward cube target + weak inward pull as cube melts
+      // Swarm particles: gradually tighten orbit radius as the shape clarifies.
+      // Interpolate target scale from 1.0 → 0.6 over the full beat duration,
+      // giving the feeling of being drawn inward toward the forming shape.
+      const orbitTighten3 = Math.min(
+        beat3Elapsed / Math.max(beatDurationRef.current, 1),
+        1,
+      );
+      const orbitRadiusScale3 = 1.0 - orbitTighten3 * 0.4;
       const orbitAlpha3 = (1 - Math.exp(-0.3 * dt)) * 0.05;
-      const orbitAttraction3 = 0.001 * meltProgress;
       for (let i = primaryCount; i < n; i++) {
         const p = particles[i];
-        p.x += (p.targetX - p.x) * orbitAlpha3;
-        p.y += (p.targetY - p.y) * orbitAlpha3;
-        p.z += (p.targetZ - p.z) * orbitAlpha3;
-        p.vx -= p.x * orbitAttraction3;
-        p.vy -= p.y * orbitAttraction3;
-        p.vz -= p.z * orbitAttraction3;
+        p.x += (p.targetX * orbitRadiusScale3 - p.x) * orbitAlpha3;
+        p.y += (p.targetY * orbitRadiusScale3 - p.y) * orbitAlpha3;
+        p.z += (p.targetZ * orbitRadiusScale3 - p.z) * orbitAlpha3;
       }
     } else if (currentBeat === 4) {
       // ── Beat 4: Ripple wave reveal — cube permanently deforms into figure ─
