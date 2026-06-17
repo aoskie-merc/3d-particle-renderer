@@ -1008,10 +1008,15 @@ export default function SceneV2(props: ISceneV2Props) {
         0.6;
     const primaryCtForDampen =
       particles.length - Math.ceil(particles.length * 0.06);
+    const MICRO_V_THRESHOLD = 0.0005;
     for (let i = 0; i < primaryCtForDampen; i++) {
       particles[i].vx *= velocityDampenFactor;
       particles[i].vy *= velocityDampenFactor;
       particles[i].vz *= velocityDampenFactor;
+      // Zero out micro-oscillations to prevent them from propagating
+      if (Math.abs(particles[i].vx) < MICRO_V_THRESHOLD) particles[i].vx = 0;
+      if (Math.abs(particles[i].vy) < MICRO_V_THRESHOLD) particles[i].vy = 0;
+      if (Math.abs(particles[i].vz) < MICRO_V_THRESHOLD) particles[i].vz = 0;
     }
 
     // Reset cascade timer when entering beat 2
@@ -1287,9 +1292,8 @@ export default function SceneV2(props: ISceneV2Props) {
         }
       }
 
-      // Spring toward cube target — smooth settling with no position snap
-      const springK2 = 0.018;
-      const damp2 = 0.88;
+      // Smooth damped lerp toward cube target — no spring overshoot
+      const lerpRate2 = 0.025;
       for (let i = 0; i < primaryCount; i++) {
         const p = particles[i];
         const i3 = i * 3;
@@ -1297,15 +1301,12 @@ export default function SceneV2(props: ISceneV2Props) {
         const tcy = sortedCubeTargetsRef.current[i3 + 1];
         const tcz = sortedCubeTargetsRef.current[i3 + 2];
 
-        p.vx += (tcx - p.x) * springK2;
-        p.vy += (tcy - p.y) * springK2;
-        p.vz += (tcz - p.z) * springK2;
-        p.vx *= damp2;
-        p.vy *= damp2;
-        p.vz *= damp2;
-        p.x += p.vx;
-        p.y += p.vy;
-        p.z += p.vz;
+        p.x += (tcx - p.x) * lerpRate2;
+        p.y += (tcy - p.y) * lerpRate2;
+        p.z += (tcz - p.z) * lerpRate2;
+        p.vx *= 0.85;
+        p.vy *= 0.85;
+        p.vz *= 0.85;
       }
 
       // Center-repulsion: keeps particles from passing through the cube center.
@@ -1413,15 +1414,14 @@ export default function SceneV2(props: ISceneV2Props) {
         const targetY = cubeY + noiseY;
         const targetZ = cubeZ + noiseZ;
 
-        p.vx += (targetX - p.x) * 0.02;
-        p.vy += (targetY - p.y) * 0.02;
-        p.vz += (targetZ - p.z) * 0.02;
-        p.vx *= 0.88;
-        p.vy *= 0.88;
-        p.vz *= 0.88;
-        p.x += p.vx;
-        p.y += p.vy;
-        p.z += p.vz;
+        // Smooth damped lerp toward deformed cube target — no spring overshoot
+        const lerpRate3 = 0.03;
+        p.x += (targetX - p.x) * lerpRate3;
+        p.y += (targetY - p.y) * lerpRate3;
+        p.z += (targetZ - p.z) * lerpRate3;
+        p.vx *= 0.85;
+        p.vy *= 0.85;
+        p.vz *= 0.85;
       }
 
       // Swarm/orbit particles: lerp toward cube target + weak inward pull as cube melts
@@ -1571,19 +1571,16 @@ export default function SceneV2(props: ISceneV2Props) {
         elapsed,
       );
 
-      const springK4 = 0.08;
-      const damping4 = 0.45;
+      // Smooth damped lerp toward figure home — very slow reveal flow, no overshoot
+      const lerpRate4 = 0.02;
       for (let i = 0; i < primaryCount; i++) {
         const p = particles[i];
-        p.vx += (p.targetX - p.x) * springK4;
-        p.vy += (p.targetY - p.y) * springK4;
-        p.vz += (p.targetZ - p.z) * springK4;
-        p.x += p.vx;
-        p.y += p.vy;
-        p.z += p.vz;
-        p.vx *= damping4;
-        p.vy *= damping4;
-        p.vz *= damping4;
+        p.x += (p.targetX - p.x) * lerpRate4;
+        p.y += (p.targetY - p.y) * lerpRate4;
+        p.z += (p.targetZ - p.z) * lerpRate4;
+        p.vx *= 0.85;
+        p.vy *= 0.85;
+        p.vz *= 0.85;
       }
 
       // Gentle center-repulsion: prevents particles from cutting through the figure center
@@ -1854,7 +1851,7 @@ export default function SceneV2(props: ISceneV2Props) {
       } else {
         const [tx, ty, tz] = CAMERA_POSITIONS[currentBeat];
         camTargetRef.current.set(tx, ty, tz);
-        state.camera.position.lerp(camTargetRef.current, 0.02);
+        state.camera.position.lerp(camTargetRef.current, 0.008);
         // Beat 0: look straight at the ring center (Y=0); other beats: slight upward offset
         state.camera.lookAt(0, currentBeat === 0 ? 0 : 0.2, 0);
       }
