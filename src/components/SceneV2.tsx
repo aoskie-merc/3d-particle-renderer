@@ -1112,10 +1112,11 @@ export default function SceneV2(props: ISceneV2Props) {
       beat4StartTimeRef.current = -1; // reset; initialized on first useFrame tick
       revealStageRef.current = 0;
       lastRevealStageRef.current = -1;
-      // Start the wave already covering the most dramatic region (head/top area)
-      // so hint particles that were emerged near the figure don't collapse back to
-      // the cube before the wave catches them.
-      waveRadiusBeat4Ref.current = waveMaxDistRef.current * 0.25;
+      // Start the wave near-zero so no particles solidify on frame 1 (avoids the
+      // visible burst caused by hundreds of particles simultaneously switching to
+      // home targets). The wave expands quickly enough to catch any hint particles
+      // that were already near the figure in Beat 3.
+      waveRadiusBeat4Ref.current = waveMaxDistRef.current * 0.02;
       // Capture current positions so Beat 4 targets blend from here — not from the
       // unrotated cube targets — during the warmup window. This prevents the collapse
       // (particles rushing through the center) that occurs when Beat 3's rotated cube
@@ -1602,20 +1603,25 @@ export default function SceneV2(props: ISceneV2Props) {
       }
 
       const beat4Elapsed = elapsed - beat4StartTimeRef.current;
-      const warmupDuration4 = 1.0;
 
-      // How much to blend toward entry positions (1.0 at start → 0.0 at warmupDuration4).
+      // posBlend anchors particle positions from the Beat 3 snapshot faster (1.5 s)
+      // than the rotation settles (2.5 s). This way positions lock in first, then
+      // the cube orientation finishes unwinding — the two effects no longer compound
+      // and produce the wiggle that occurred when both ran over the same 1.0 s window.
+      const POS_BLEND_DURATION_4 = 1.5;
+      const ROT_UNWIND_DURATION_4 = 2.5;
+
+      // How much to blend toward entry positions (1.0 at start → 0.0 at POS_BLEND_DURATION_4).
       // Ensures particles flow from wherever they were in Beat 3 rather than jumping.
-      const posBlend4 =
-        beat4Elapsed < warmupDuration4 ? 1 - beat4Elapsed / warmupDuration4 : 0;
+      const posBlend4 = Math.max(0, 1 - beat4Elapsed / POS_BLEND_DURATION_4);
       const entryPos4 = beat4EntryPosRef.current;
 
       // Smoothstep-decelerate the cube rotation from the Beat 3 entry angle to 0
-      // over the first 2.0 s so there is no sudden orientation snap at the transition.
+      // over ROT_UNWIND_DURATION_4 s so there is no sudden orientation snap.
       let rotY4 = 0;
       let rotX4 = 0;
-      if (beat4Elapsed < warmupDuration4) {
-        const tSmooth = beat4Elapsed / warmupDuration4;
+      if (beat4Elapsed < ROT_UNWIND_DURATION_4) {
+        const tSmooth = beat4Elapsed / ROT_UNWIND_DURATION_4;
         const smooth = tSmooth * tSmooth * (3 - 2 * tSmooth); // smoothstep
         rotY4 = beat4EntryRotYRef.current * (1 - smooth);
         rotX4 = beat4EntryRotXRef.current * (1 - smooth);
