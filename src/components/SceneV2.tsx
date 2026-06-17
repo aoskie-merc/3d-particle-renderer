@@ -1486,26 +1486,22 @@ export default function SceneV2(props: ISceneV2Props) {
       // Cube continues to rotate; in final 25% steer toward nearest clean angle (2π multiple)
       // so Beat 4 starts with rotation ≈ 0 without the cube appearing to stop.
       if (beat3Progress > 0.75) {
-        const settleT3 = (beat3Progress - 0.75) / 0.25;
+        const settleT3 = Math.min(1, (beat3Progress - 0.65) / 0.35); // starts earlier, more time
         const settleSmooth3 = settleT3 * settleT3 * (3 - 2 * settleT3);
 
         // Maintain momentum but taper increment by up to 50%
         shapeRotationRef.current += rotYSpeed3 * (1 - settleSmooth3 * 0.5);
         shapeRotationXRef.current += rotXSpeed3 * (1 - settleSmooth3 * 0.5);
 
-        // Steer toward nearest multiple of π/2 (90°) — a cube has 4-fold symmetry so
-        // 0°, 90°, 180°, 270° are all face-on. Targeting π/2 multiples halves the
-        // worst-case settling distance (from 180° to 45°) and ensures Beat 4 never
-        // starts with the cube edge-on (45°/135°/225°/315°), which caused the
-        // elongated-slab artifact when posBlend4 held those diagonal positions for 1.5s.
-        const nearestTargetY =
-          Math.round(shapeRotationRef.current / (Math.PI / 2)) * (Math.PI / 2);
-        const nearestTargetX =
-          Math.round(shapeRotationXRef.current / (Math.PI / 2)) * (Math.PI / 2);
+        // Steer toward nearest multiple of 2π (full rotation) so the cube looks face-on
+        // at Beat 4 entry. Increased pull strength (0.15) + earlier window (65%) gives
+        // enough time/force to reach the target cleanly without chaos at the transition.
+        const nearestTargetY = Math.round(shapeRotationRef.current / (Math.PI * 2)) * Math.PI * 2;
+        const nearestTargetX = Math.round(shapeRotationXRef.current / (Math.PI * 2)) * Math.PI * 2;
         shapeRotationRef.current +=
-          (nearestTargetY - shapeRotationRef.current) * settleSmooth3 * 0.08;
+          (nearestTargetY - shapeRotationRef.current) * settleSmooth3 * 0.15;
         shapeRotationXRef.current +=
-          (nearestTargetX - shapeRotationXRef.current) * settleSmooth3 * 0.08;
+          (nearestTargetX - shapeRotationXRef.current) * settleSmooth3 * 0.15;
       } else {
         shapeRotationRef.current += rotYSpeed3;
         shapeRotationXRef.current += rotXSpeed3;
