@@ -1061,18 +1061,25 @@ export default function SceneV2(props: ISceneV2Props) {
     // transitionDuration) was the root cause of the "slow Swirl In" (Beat 0→1)
     // and "speed burst at Form" (Beat 1→2) sensations: damping wiped out
     // momentum, then the higher lerp rate in Beat 2 felt like a sudden lurch.
-    const velocityDampenFactor = 0.95;
+    //
+    // Beat 2 entry is excluded entirely: Beat 1 primary velocities are
+    // near-zero (crushed to 0.45× every frame) so there is nothing useful to
+    // damp. Applying any dampen — even 0.95× — creates a subtle frame-1
+    // discontinuity that reads as a micro-lurch at Form entry.
     const primaryCtForDampen =
       particles.length - Math.ceil(particles.length * 0.06);
-    const MICRO_V_THRESHOLD = 0.0005;
-    for (let i = 0; i < primaryCtForDampen; i++) {
-      particles[i].vx *= velocityDampenFactor;
-      particles[i].vy *= velocityDampenFactor;
-      particles[i].vz *= velocityDampenFactor;
-      // Zero out micro-oscillations to prevent them from propagating
-      if (Math.abs(particles[i].vx) < MICRO_V_THRESHOLD) particles[i].vx = 0;
-      if (Math.abs(particles[i].vy) < MICRO_V_THRESHOLD) particles[i].vy = 0;
-      if (Math.abs(particles[i].vz) < MICRO_V_THRESHOLD) particles[i].vz = 0;
+    if (beat !== 2) {
+      const velocityDampenFactor = 0.95;
+      const MICRO_V_THRESHOLD = 0.0005;
+      for (let i = 0; i < primaryCtForDampen; i++) {
+        particles[i].vx *= velocityDampenFactor;
+        particles[i].vy *= velocityDampenFactor;
+        particles[i].vz *= velocityDampenFactor;
+        // Zero out micro-oscillations to prevent them from propagating
+        if (Math.abs(particles[i].vx) < MICRO_V_THRESHOLD) particles[i].vx = 0;
+        if (Math.abs(particles[i].vy) < MICRO_V_THRESHOLD) particles[i].vy = 0;
+        if (Math.abs(particles[i].vz) < MICRO_V_THRESHOLD) particles[i].vz = 0;
+      }
     }
 
     // Start cube rotation in Swirl In so it arrives at Form already spinning
@@ -1402,14 +1409,21 @@ export default function SceneV2(props: ISceneV2Props) {
         LERP_RATE_BEAT2_TARGET,
         beat2Warmup * beat2Warmup,
       );
+      // Ramp velocity damping from Beat 1's 0.45 to Beat 2's 0.85 over 3 s.
+      // Without this ramp the sudden jump in damping coefficient creates a subtle
+      // change in momentum character on frame 1, contributing to the perceived
+      // acceleration at Form entry.
+      const BEAT1_VEL_DAMP = 0.45;
+      const BEAT2_VEL_DAMP_STEADY = 0.85;
+      const velDamp2 = lerp(BEAT1_VEL_DAMP, BEAT2_VEL_DAMP_STEADY, beat2Warmup);
       for (let i = 0; i < primaryCount; i++) {
         const p = particles[i];
         p.x += (p.targetX - p.x) * lerpRate2;
         p.y += (p.targetY - p.y) * lerpRate2;
         p.z += (p.targetZ - p.z) * lerpRate2;
-        p.vx *= 0.85;
-        p.vy *= 0.85;
-        p.vz *= 0.85;
+        p.vx *= velDamp2;
+        p.vy *= velDamp2;
+        p.vz *= velDamp2;
       }
 
       // Center-repulsion: keeps particles from passing through the cube center.
@@ -1899,6 +1913,12 @@ export default function SceneV2(props: ISceneV2Props) {
         // In the second half of Beat 1, gently pull particles toward their pre-assigned
         // cube targets so they're already 30–40% of the way there when Beat 2 starts.
         // The pull starts at 0 and ease-in increases to cubeLerpRate=0.008 at beat end.
+        //
+        // IMPORTANT: apply the same Y+X rotation that Beat 2 uses so the direction of
+        // pull is already aligned with Beat 2's rotated targets. Without this, Beat 1
+        // pulls toward the raw unrotated cube face (e.g. +X) while Beat 2 immediately
+        // targets the rotated face (e.g. +X rotated 62° over 8 s) — the sudden
+        // direction change is the primary cause of the visible acceleration at Beat 2 entry.
         if (
           beat1Progress > 0.5 &&
           sortedCubeTargetsRef.current.length >= primaryCount * 3
@@ -1907,12 +1927,25 @@ export default function SceneV2(props: ISceneV2Props) {
           const pullSmooth = pullT * pullT; // ease in
           const cubeLerpRate = pullSmooth * 0.008;
 
+          // Precompute rotation matrices once outside the per-particle loop
+          const cosYPull = Math.cos(shapeRotationRef.current);
+          const sinYPull = Math.sin(shapeRotationRef.current);
+          const cosXPull = Math.cos(shapeRotationXRef.current);
+          const sinXPull = Math.sin(shapeRotationXRef.current);
+
           for (let i = 0; i < primaryCount; i++) {
             const p = particles[i];
             const i3 = i * 3;
-            const cubeTargX = sortedCubeTargetsRef.current[i3];
-            const cubeTargY = sortedCubeTargetsRef.current[i3 + 1];
-            const cubeTargZ = sortedCubeTargetsRef.current[i3 + 2];
+            const baseX1 = sortedCubeTargetsRef.current[i3];
+            const baseY1 = sortedCubeTargetsRef.current[i3 + 1];
+            const baseZ1 = sortedCubeTargetsRef.current[i3 + 2];
+            // Apply same Y-axis then X-axis rotation that Beat 2 uses each frame
+            const rx1 = cosYPull * baseX1 - sinYPull * baseZ1;
+            const ry1 = baseY1;
+            const rz1 = sinYPull * baseX1 + cosYPull * baseZ1;
+            const cubeTargX = rx1;
+            const cubeTargY = cosXPull * ry1 - sinXPull * rz1;
+            const cubeTargZ = sinXPull * ry1 + cosXPull * rz1;
 
             p.x += (cubeTargX - p.x) * cubeLerpRate;
             p.y += (cubeTargY - p.y) * cubeLerpRate;
