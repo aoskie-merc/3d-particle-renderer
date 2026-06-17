@@ -974,12 +974,13 @@ export default function SceneV2(props: ISceneV2Props) {
       beat3StartTimeRef.current = -1;
       hintPhaseRef.current = 0;
       beat3MorphFractionRef.current = 0;
-      // Zero velocities from Beat 2's lerp system to prevent sudden spring excitation
+      // Dampen (not zero) velocities: preserve momentum direction but reduce magnitude
+      // so the spring warmup has less to fight while keeping motion alive across the transition.
       const primaryCt3 = particles.length - Math.ceil(particles.length * 0.06);
       for (let i = 0; i < primaryCt3; i++) {
-        particles[i].vx = 0;
-        particles[i].vy = 0;
-        particles[i].vz = 0;
+        particles[i].vx *= 0.3;
+        particles[i].vy *= 0.3;
+        particles[i].vz *= 0.3;
       }
 
       // Pre-compute per-particle curvature + prominence weights (0–1).
@@ -1048,14 +1049,13 @@ export default function SceneV2(props: ISceneV2Props) {
       // so hint particles that were emerged near the figure don't collapse back to
       // the cube before the wave catches them.
       waveRadiusBeat4Ref.current = waveMaxDistRef.current * 0.25;
-      // Zero Beat 3 spring velocities so they don't carry into Beat 4's warmup spring
-      // and cause oscillation (jitter). Beat 3 uses damping3=0.7, leaving significant
-      // residual velocity that interacts destructively with Beat 4's spring forces.
+      // Dampen Beat 3 spring velocities: preserve momentum direction to avoid a dead stop
+      // while reducing magnitude enough to prevent destructive oscillation at Beat 4 entry.
       const primaryCt4 = particles.length - Math.ceil(particles.length * 0.06);
       for (let i = 0; i < primaryCt4; i++) {
-        particles[i].vx = 0;
-        particles[i].vy = 0;
-        particles[i].vz = 0;
+        particles[i].vx *= 0.3;
+        particles[i].vy *= 0.3;
+        particles[i].vz *= 0.3;
       }
       // Capture current positions so Beat 4 targets blend from here — not from the
       // unrotated cube targets — during the warmup window. This prevents the collapse
@@ -1070,16 +1070,20 @@ export default function SceneV2(props: ISceneV2Props) {
       beat4EntryPosRef.current = entryPosBuf;
     }
 
-    // Beat 5 entry: zero out accumulated spring velocities from Beat 4 so the
-    // transition from spring physics → lerp doesn't cause a sudden position jump.
+    // Beat 5 entry: dampen (not zero) spring velocities from Beat 4 so particles carry
+    // their current momentum into Beat 5, creating a seamless flow rather than a hard stop.
     if (beat === 5) {
       beat5StartTimeRef.current = -1; // initialized on first useFrame tick
       for (let i = 0; i < particles.length; i++) {
-        particles[i].vx = 0;
-        particles[i].vy = 0;
-        particles[i].vz = 0;
+        particles[i].vx *= 0.3;
+        particles[i].vy *= 0.3;
+        particles[i].vz *= 0.3;
       }
     }
+
+    // Reset blend ramp: new beat dynamics engage gradually over transitionDuration seconds
+    // so there are no abrupt snaps — particles coast into the new attractor field.
+    beatTransitionRef.current = 0;
 
     transitionRef.current = {
       active: true,
@@ -1129,6 +1133,15 @@ export default function SceneV2(props: ISceneV2Props) {
         lerpWeightRef.current = trans.toLerpWeight;
       }
     }
+
+    // Ramp beatTransitionRef from 0→1 over transitionDuration seconds so new
+    // beat dynamics engage gradually — lerp alphas and spring strengths are
+    // multiplied by this to prevent snapping at beat entry.
+    beatTransitionRef.current = Math.min(
+      1,
+      beatTransitionRef.current +
+        dt / Math.max(transitionDurationRef.current, 0.05),
+    );
 
     // ── Orbit / primary split (last 6% = orbit, first 94% = primary) ────────
     const orbitCount = Math.ceil(n * 0.06);
@@ -1277,7 +1290,9 @@ export default function SceneV2(props: ISceneV2Props) {
           const delay = (i / Math.max(primaryCount - 1, 1)) * 8.0;
           const effectiveElapsed = Math.max(0, beat2Elapsed - delay);
           const cascadeAlpha =
-            (1 - Math.exp(-0.8 * effectiveElapsed)) * lerpWeightRef.current;
+            (1 - Math.exp(-0.8 * effectiveElapsed)) *
+            lerpWeightRef.current *
+            beatTransitionRef.current;
           const p = particles[i];
           p.x += (p.targetX - p.x) * cascadeAlpha;
           p.y += (p.targetY - p.y) * cascadeAlpha;
@@ -1293,7 +1308,9 @@ export default function SceneV2(props: ISceneV2Props) {
         const lerpSpeed2 =
           formTransitionRef.current === "fast" ? baseLerp2 * 5 : baseLerp2;
         const shapeAlpha2 =
-          (1 - Math.exp(-lerpSpeed2 * dt)) * lerpWeightRef.current;
+          (1 - Math.exp(-lerpSpeed2 * dt)) *
+          lerpWeightRef.current *
+          beatTransitionRef.current;
         for (let i = 0; i < primaryCount; i++) {
           const p = particles[i];
           p.x += (p.targetX - p.x) * shapeAlpha2;
@@ -1465,8 +1482,17 @@ export default function SceneV2(props: ISceneV2Props) {
           ? 0.008 + (springK3Base - 0.008) * (beat3Elapsed / warmupDuration3)
           : springK3Base;
       const damping3 = 0.85;
+      const SHIMMER_AMP_3 = 0.002;
       for (let i = 0; i < primaryCount; i++) {
         const p = particles[i];
+        // Subtle per-particle noise keeps the surface alive between hint pulses —
+        // continuous wonder, never fully still. Golden-ratio phase offset for variety.
+        const shimmerPhase3 = i * 0.137;
+        p.vx += Math.sin(elapsed * 0.8 + shimmerPhase3) * SHIMMER_AMP_3 * dt;
+        p.vy +=
+          Math.cos(elapsed * 0.56 + shimmerPhase3 * 1.3) * SHIMMER_AMP_3 * dt;
+        p.vz +=
+          Math.sin(elapsed * 0.4 + shimmerPhase3 * 0.7) * SHIMMER_AMP_3 * dt;
         p.vx += (p.targetX - p.x) * springK3;
         p.vy += (p.targetY - p.y) * springK3;
         p.vz += (p.targetZ - p.z) * springK3;
@@ -1767,7 +1793,10 @@ export default function SceneV2(props: ISceneV2Props) {
           beat5Elapsed < warmupDuration5
             ? 0.3 + (lerpSpeed5Base - 0.3) * (beat5Elapsed / warmupDuration5)
             : lerpSpeed5Base;
-        const alpha5 = (1 - Math.exp(-lerpSpeed5 * dt)) * lerpWeightRef.current;
+        const alpha5 =
+          (1 - Math.exp(-lerpSpeed5 * dt)) *
+          lerpWeightRef.current *
+          beatTransitionRef.current;
         for (let i = 0; i < primaryCount; i++) {
           const p = particles[i];
           p.x += (p.targetX - p.x) * alpha5;
@@ -1813,8 +1842,13 @@ export default function SceneV2(props: ISceneV2Props) {
       } else if (currentBeat === 1) {
         // Beat 1: lerp primary particles toward the halfway point (50% ring, 50% shape).
         // Scale speed so the lerp reaches ~99% in beatDuration seconds.
+        // beatTransitionRef ramps from 0→1 so at beat entry particles continue their
+        // boid-driven momentum from Beat 0 rather than snapping to the lerp target.
         const lerpSpeed1 = 4.6 / Math.max(beatDurationRef.current, 1);
-        const alpha1 = (1 - Math.exp(-lerpSpeed1 * dt)) * lerpWeightRef.current;
+        const alpha1 =
+          (1 - Math.exp(-lerpSpeed1 * dt)) *
+          lerpWeightRef.current *
+          beatTransitionRef.current;
         for (let i = 0; i < primaryCount; i++) {
           const p = particles[i];
           p.x += (p.targetX - p.x) * alpha1;
@@ -1884,7 +1918,9 @@ export default function SceneV2(props: ISceneV2Props) {
       const orbitAlphaElse = (1 - Math.exp(-0.3 * dt)) * 0.05;
       if (currentBeat === 5) {
         const alpha5Orbit =
-          (1 - Math.exp(-getLerpSpeedForBeat(5) * dt)) * lerpWeightRef.current;
+          (1 - Math.exp(-getLerpSpeedForBeat(5) * dt)) *
+          lerpWeightRef.current *
+          beatTransitionRef.current;
         const breakaways = breakawayRef.current;
         for (let i = primaryCount; i < n; i++) {
           const p = particles[i];

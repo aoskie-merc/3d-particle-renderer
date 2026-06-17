@@ -377,6 +377,7 @@ export default function AppV2() {
   const [hintShape, setHintShape] = useState<THintShape>("blob");
   const [revealStages, setRevealStages] = useState(4);
   const [waveSpeed, setWaveSpeed] = useState(1.5);
+  const [transitionDuration, setTransitionDuration] = useState(1.8);
   const [particleColor, setParticleColor] = useState("#c8cad4");
 
   // ── Panel state ───────────────────────────────────────────────────────────
@@ -776,6 +777,7 @@ export default function AppV2() {
             hintShape={hintShape}
             revealStages={revealStages}
             waveSpeed={waveSpeed}
+            transitionDuration={transitionDuration}
           />
         </Canvas>
       </div>
@@ -1423,6 +1425,29 @@ export default function AppV2() {
                     step={0.1}
                     value={waveSpeed}
                     onChange={(e) => setWaveSpeed(parseFloat(e.target.value))}
+                  />
+                </div>
+                <div className={styles.controlRow}>
+                  <label className={styles.controlLabel}>
+                    <span>Transition Blend</span>
+                    <EditableSliderValue
+                      displayValue={`${transitionDuration.toFixed(1)}s`}
+                      inputDefault={transitionDuration}
+                      onCommit={setTransitionDuration}
+                      min={0.5}
+                      max={4.0}
+                    />
+                  </label>
+                  <input
+                    className={styles.slider}
+                    type="range"
+                    min={0.5}
+                    max={4.0}
+                    step={0.1}
+                    value={transitionDuration}
+                    onChange={(e) =>
+                      setTransitionDuration(parseFloat(e.target.value))
+                    }
                   />
                 </div>
               </div>
