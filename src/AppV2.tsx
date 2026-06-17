@@ -366,17 +366,17 @@ export default function AppV2() {
   // ── Settings ──────────────────────────────────────────────────────────────
   // Fixed swarm count — Dense/Sparse only affects the surface skin layer.
   const [densityLabel, setDensityLabel] = useState<TDensityLabel>(
-    (saved?.densityLabel as TDensityLabel) ?? "Medium",
+    (saved?.densityLabel as TDensityLabel) ?? "Dense",
   );
   const densityPreset =
     DENSITY_PRESETS.find((p) => p.label === densityLabel) ?? DENSITY_PRESETS[1];
   const particleCount = densityPreset.swarmCount;
   const skinParticleCount = densityPreset.skinCount;
   const [particleSize, setParticleSize] = useState(
-    (saved?.particleSize as number) ?? 0.0033,
+    (saved?.particleSize as number) ?? 0.002,
   );
   const [swarmSizeMultiplier, setSwarmSizeMultiplier] = useState(
-    (saved?.swarmSizeMultiplier as number) ?? 2.0,
+    (saved?.swarmSizeMultiplier as number) ?? 2.2,
   );
   const [opacity, setOpacity] = useState((saved?.opacity as number) ?? 0.8);
   const [swirlStrength, setSwirlStrength] = useState(
