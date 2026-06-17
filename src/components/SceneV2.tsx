@@ -1300,8 +1300,8 @@ export default function SceneV2(props: ISceneV2Props) {
       _beat5EulerBase.set(baseRot.x, baseRot.y, baseRot.z, "XYZ");
       _beat5EulerNew.set(
         baseRot.x,
-        baseRot.y + approvedRotYRef.current,
-        baseRot.z,
+        baseRot.y,
+        baseRot.z + approvedRotYRef.current,
         "XYZ",
       );
       _beat5QuatBase.setFromEuler(_beat5EulerBase);
@@ -2216,8 +2216,8 @@ export default function SceneV2(props: ISceneV2Props) {
       };
       // In Beat 5, add the approved spin/tilt offsets so the skin mesh co-rotates
       // with the swarm particle cloud.
-      const addRotY = currentBeat === 5 ? approvedRotYRef.current : 0;
-      figureGroupRef.current.rotation.set(rot.x, rot.y + addRotY, rot.z);
+      const addRotZ = currentBeat === 5 ? approvedRotYRef.current : 0;
+      figureGroupRef.current.rotation.set(rot.x, rot.y, rot.z + addRotZ);
       figureGroupRef.current.scale.setScalar(figureScaleRef.current ?? 1.0);
       // Shift the skin mesh group by the negative centroid so it aligns with
       // the centroid-adjusted swarm particle cloud (homeX/Y/Z are centered at
