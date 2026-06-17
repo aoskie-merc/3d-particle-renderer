@@ -1379,13 +1379,13 @@ export default function SceneV2(props: ISceneV2Props) {
 
       const t = beat3Elapsed;
 
-      // Map hintClarity to maxMorphFraction: whisper=0.35, subtle=0.55, suggestive=0.70
+      // Map hintClarity to maxMorphFraction: whisper=0.70, subtle=1.10, suggestive=1.40
       const clarityFraction =
         hintClarityRef.current === "suggestive"
-          ? 0.7
+          ? 1.4
           : hintClarityRef.current === "subtle"
-            ? 0.55
-            : 0.35;
+            ? 1.1
+            : 0.7;
 
       const motionStyle = hintMotionStyleRef.current;
       const sweepSpeed = hintSweepSpeedRef.current;
