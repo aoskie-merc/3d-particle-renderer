@@ -1,6 +1,10 @@
-import type { TBlendModeKey, TDirectionBias, TDistributionMethod } from './types';
+import type {
+  TBlendModeKey,
+  TDirectionBias,
+  TDistributionMethod,
+} from "./types";
 
-import { DEFAULT_PARTICLE_COLOR_ON_DARK_CANVAS } from './theme';
+import { BOID_DEFAULTS } from "./sim/boidParams";
 
 /** All tunable particle + view settings (`appPreferencesPersistence` hydrates defaults from localStorage). */
 export interface IParticleSettings {
@@ -25,6 +29,40 @@ export interface IParticleSettings {
   vibrationNoiseScale: number;
   wireOpacity: number;
 
+  /** Boid / murmuration swarm parameters. */
+  boidVisualRange: number;
+  boidSeparation: number;
+  boidAlignment: number;
+  boidCohesion: number;
+  boidHomeSpring: number;
+  boidSpeedLimit: number;
+  boidNoise: number;
+
+  /** Landing page boid dot radius in CSS px. */
+  landingParticleSize: number;
+
+  /** Landing page particle count. */
+  landingParticleCount: number;
+
+  /** Swarm motion — orbit & split controls. */
+  swarmOrbitSpeed: number;
+  swarmOrbitRadius: number;
+  swarmSwirlStrength: number;
+  swarmSplitIntensity: number;
+  swarmSplitSpeed: number;
+
+  /** When enabled, skin opacity is driven by proximity to the swarm centroid. */
+  proximityReveal: boolean;
+
+  /** Radius of the proximity reveal zone around the swarm centroid (world units). */
+  proximityRadius: number;
+
+  /** Target radius for the Orb animation state (world units). */
+  orbRadius: number;
+
+  /** Swarm behaviour during the Enter state (after particles have settled). */
+  enterSwarmMode: "murmur" | "orbit" | "drift";
+
   /** Base model particle skin replaces wire shell when enabled. */
   skinEnabled: boolean;
   skinParticleCount: number;
@@ -38,30 +76,48 @@ export interface IParticleSettings {
 
 /** Defaults match Mercury dark canvas + light-beige particles (see theme.ts). */
 export const PARTICLE_SETTINGS_DEFAULTS: IParticleSettings = {
-  blendMode: 'normal',
-  color: DEFAULT_PARTICLE_COLOR_ON_DARK_CANVAS,
-  distribution: 'areaWeighted',
-  directionBias: 'radial',
-  movementAmplitude: 0.09,
-  movementSpeed: 0.94,
+  blendMode: "normal",
+  color: "#eccc98",
+  distribution: "areaWeighted",
+  directionBias: "random",
+  movementAmplitude: 1.09,
+  movementSpeed: 0.18,
   panelBlur: 12,
   panelOpacity: 0.7,
-  opacity: 0.9,
-  particleCount: 12_000,
-  particleSize: 0.024,
+  opacity: 0.76,
+  particleCount: 9_728,
+  particleSize: 0.002,
   showWireframe: false,
-  surfaceNormalOffset: 0.035,
-  vibrationAmplitude: 0.09,
+  surfaceNormalOffset: 0.354,
+  vibrationAmplitude: 0.035,
   vibrationDamping: 0.35,
-  vibrationFrequency: 0.85,
+  vibrationFrequency: 0.23,
   vibrationNoiseScale: 0.92,
   wireOpacity: 0.28,
-  skinEnabled: false,
-  skinParticleCount: 32_768,
-  skinParticleSize: 0.028,
-  skinDepthFade: 0.3,
-  skinNormalShading: 0.5,
-  skinContourDensity: 0.45,
-  skinColor: DEFAULT_PARTICLE_COLOR_ON_DARK_CANVAS,
-  skinOpacity: 0.92,
+  landingParticleSize: 2.5,
+  landingParticleCount: 120,
+  boidVisualRange: BOID_DEFAULTS.visualRange,
+  boidSeparation: BOID_DEFAULTS.separationFactor,
+  boidAlignment: BOID_DEFAULTS.alignmentFactor,
+  boidCohesion: BOID_DEFAULTS.cohesionFactor,
+  boidHomeSpring: BOID_DEFAULTS.homeSpringFactor,
+  boidSpeedLimit: BOID_DEFAULTS.speedLimit,
+  boidNoise: BOID_DEFAULTS.noiseMagnitude,
+  swarmOrbitSpeed: BOID_DEFAULTS.orbitSpeed,
+  swarmOrbitRadius: BOID_DEFAULTS.orbitRadius,
+  swarmSwirlStrength: BOID_DEFAULTS.swirlStrength,
+  swarmSplitIntensity: 0.35,
+  swarmSplitSpeed: BOID_DEFAULTS.splitSpeed,
+  proximityReveal: false,
+  proximityRadius: 1.0,
+  orbRadius: 0.3,
+  enterSwarmMode: "murmur",
+  skinEnabled: true,
+  skinParticleCount: 135_936,
+  skinParticleSize: 0.0055,
+  skinDepthFade: 0.13,
+  skinNormalShading: 0,
+  skinContourDensity: 0.68,
+  skinColor: "#c8b79b",
+  skinOpacity: 0.3,
 };

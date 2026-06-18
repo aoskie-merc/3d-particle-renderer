@@ -1,7 +1,7 @@
 .hit {
   position: fixed;
   top: 16px;
-  left: 16px;
+  right: 56px;
   z-index: 136;
   box-sizing: border-box;
   display: grid;

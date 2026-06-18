@@ -1,0 +1,735 @@
+:root {
+  --v2-bg: #0a0a0f;
+  --v2-nav-bg: rgba(10, 10, 15, 0.9);
+  --v2-nav-border: rgba(255, 255, 255, 0.08);
+  --v2-panel-bg: rgba(18, 18, 24, 0.96);
+  --v2-panel-border: rgba(255, 255, 255, 0.1);
+  --v2-text-primary: rgba(255, 255, 255, 1);
+  --v2-text-muted: rgba(255, 255, 255, 0.5);
+  --v2-text-nav: rgba(255, 255, 255, 0.7);
+  --v2-active-bg: rgba(255, 255, 255, 0.08);
+  --v2-selected-bg: rgba(255, 255, 255, 0.15);
+  --v2-slider-track: rgba(255, 255, 255, 0.15);
+  --v2-slider-thumb: #ffffff;
+  --v2-accordion-border: rgba(255, 255, 255, 0.06);
+  --v2-nav-height: 64px;
+  --v2-scrubber-height: 20px;
+
+  /* Mercury DS font-family tokens (mirrors --ds-font-family-* from mercury-web) */
+  --v2-font-text: var(
+    --ds-font-family-text,
+    "Arcadia Text",
+    system-ui,
+    sans-serif
+  );
+  --v2-font-display: var(
+    --ds-font-family-display,
+    "Arcadia Display",
+    system-ui,
+    sans-serif
+  );
+  --v2-font-mono: var(--ds-font-family-monospace, "Roboto Mono", monospace);
+
+  /* Mercury DS text-size tokens (from DSText/mixins.css) */
+  --ds-text-micro: 10px;
+  --ds-text-tiny: 12px;
+  --ds-text-label: 13px;
+  --ds-text-body-secondary: 14px;
+  --ds-text-body-default: 15px;
+  --ds-text-body-large: 17px;
+
+  /* DS body/default text style (DSText mixins.css @define-mixin body-default) */
+  --v2-body-font-size: var(--ds-text-body-default);
+  --v2-body-line-height: 24px;
+  --v2-body-font-weight: 400;
+
+  /* DS icon button sizing — small DSButton icon-only (styles.module.css .small + .iconOnly) */
+  --v2-icon-btn-size: 32px;
+  --v2-icon-size: 13px;
+}
+
+/* ── Layout ────────────────────────────────────────────────────────────────── */
+
+.app {
+  position: relative;
+  width: 100vw;
+  height: 100vh;
+  overflow: hidden;
+  background: var(--v2-bg);
+  font-family: var(--v2-font-text);
+  font-size: var(--ds-text-label);
+  font-weight: 400;
+  color: var(--v2-text-primary);
+}
+
+/* ── Canvas (full screen) ──────────────────────────────────────────────────── */
+
+.canvasWrap {
+  position: absolute;
+  inset: 0;
+  z-index: 0;
+}
+
+/* ── Logo mark ─────────────────────────────────────────────────────────────── */
+
+.logoMark {
+  position: fixed;
+  top: 20px;
+  left: 24px;
+  z-index: 10;
+  height: 32px;
+  width: auto;
+  opacity: 0.7;
+  pointer-events: none;
+  user-select: none;
+  display: block;
+}
+
+/* ── Backdrop ──────────────────────────────────────────────────────────────── */
+
+.backdrop {
+  position: fixed;
+  inset: 0;
+  z-index: 15;
+  background: transparent;
+}
+
+/* ── Nav button wrapper (positions panels relative to their trigger) ─────────── */
+
+.navBtnWrap {
+  position: relative;
+}
+
+/* ── Panel cards (shared base) ────────────────────────────────────────────── */
+
+.beatsPanel,
+.controlsPanel {
+  /* position/bottom/left set via inline style (getBoundingClientRect) so panels
+     escape the nav bar's overflow-x:clip and render at their natural width */
+  z-index: 20;
+  background: var(--v2-panel-bg);
+  border: 1px solid var(--v2-panel-border);
+  border-radius: 16px;
+  backdrop-filter: blur(20px);
+  -webkit-backdrop-filter: blur(20px);
+  box-shadow: 0 8px 40px rgba(0, 0, 0, 0.6);
+  overflow: hidden;
+}
+
+/* ── Beats panel ───────────────────────────────────────────────────────────── */
+
+.beatsPanel {
+  width: 180px;
+  padding: 8px 0;
+}
+
+/* ── Beats panel header ────────────────────────────────────────────────────── */
+
+.beatsPanelHeader {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 8px 12px;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.06);
+}
+
+.beatsPanelTitle {
+  font-family: var(--v2-font-text);
+  font-size: 11px;
+  font-weight: 480;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: rgba(255, 255, 255, 0.4);
+}
+
+.beatsPanelChevron {
+  background: none;
+  border: none;
+  color: rgba(255, 255, 255, 0.4);
+  cursor: pointer;
+  padding: 0;
+  font-size: 14px;
+  line-height: 1;
+  display: flex;
+  align-items: center;
+  transition: color 120ms;
+}
+
+.beatsPanelChevron:hover {
+  color: rgba(255, 255, 255, 0.7);
+}
+
+/* ── Beat rows ─────────────────────────────────────────────────────────────── */
+
+.beatList {
+  list-style: none;
+  margin: 0;
+  padding: 4px 0;
+  display: flex;
+  flex-direction: column;
+}
+
+.beatRow {
+  width: 100%;
+  padding: 7px 12px;
+  cursor: pointer;
+  color: rgba(255, 255, 255, 0.5);
+  font-family: var(--v2-font-text);
+  font-size: var(--ds-text-label);
+  font-weight: 400;
+  line-height: 20px;
+  transition: color 120ms;
+  user-select: none;
+  box-sizing: border-box;
+}
+
+.beatRow:hover {
+  color: rgba(255, 255, 255, 0.8);
+}
+
+.beatRowActive {
+  background: rgba(255, 255, 255, 0.1);
+  border-radius: 6px;
+  margin: 0 6px;
+  padding: 7px 6px;
+  color: #ffffff;
+  font-weight: 480;
+}
+
+/* ── Beats play button ─────────────────────────────────────────────────────── */
+
+.beatsPlayBtn {
+  display: block;
+  width: calc(100% - 20px);
+  margin: 8px 10px 4px;
+  padding: 8px 0;
+  background: transparent;
+  border: 1px solid rgba(255, 255, 255, 0.2);
+  border-radius: 999px;
+  color: rgba(255, 255, 255, 0.8);
+  font-family: var(--v2-font-text);
+  font-size: var(--ds-text-label);
+  font-weight: 400;
+  cursor: pointer;
+  transition: background 120ms;
+  text-align: center;
+}
+
+.beatsPlayBtn:hover {
+  background: rgba(255, 255, 255, 0.06);
+}
+
+/* ── Controls panel ────────────────────────────────────────────────────────── */
+
+.controlsPanel {
+  width: 300px;
+  padding: 16px;
+  max-height: calc(
+    100vh - var(--v2-nav-height) - var(--v2-scrubber-height) - 60px
+  );
+  overflow-y: auto;
+  scrollbar-width: thin;
+  scrollbar-color: rgba(255, 255, 255, 0.1) transparent;
+}
+
+.panelHeading {
+  font-size: var(--ds-text-micro);
+  font-weight: 480;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  color: var(--v2-text-muted);
+  margin: 0 0 12px;
+}
+
+/* ── Accordion ─────────────────────────────────────────────────────────────── */
+
+.accordionSection {
+  border-top: 1px solid var(--v2-accordion-border);
+}
+
+.accordionSection:last-child {
+  border-bottom: 1px solid var(--v2-accordion-border);
+}
+
+.accordionHeader {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  width: 100%;
+  padding: 10px 0;
+  background: transparent;
+  border: none;
+  color: var(--v2-text-nav);
+  font-family: inherit;
+  font-size: var(--v2-body-font-size);
+  font-weight: var(--v2-body-font-weight);
+  line-height: var(--v2-body-line-height);
+  cursor: pointer;
+  transition: color 120ms;
+}
+
+.accordionHeader:hover {
+  color: var(--v2-text-primary);
+}
+
+.chevron {
+  font-size: var(--ds-text-micro);
+  color: var(--v2-text-muted);
+  transition: transform 150ms;
+  display: inline-block;
+}
+
+.chevronOpen {
+  font-size: var(--ds-text-micro);
+  color: var(--v2-text-muted);
+  transition: transform 150ms;
+  display: inline-block;
+  transform: rotate(180deg);
+}
+
+.accordionBody {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  padding-bottom: 16px;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.08);
+  margin-bottom: 4px;
+}
+
+.accordionSection + .accordionSection {
+  margin-top: 4px;
+}
+
+/* ── Control rows ──────────────────────────────────────────────────────────── */
+
+.controlRow {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.controlLabel {
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+  color: var(--v2-text-muted);
+  font-family: var(--ds-font-family-text);
+  font-size: 12px;
+  font-weight: 480;
+  line-height: 24px;
+  letter-spacing: 1px;
+  text-transform: uppercase;
+}
+
+.controlLabelText {
+  font-family: var(--ds-font-family-text);
+  font-size: 12px;
+  font-weight: 480;
+  line-height: 24px;
+  letter-spacing: 1px;
+  text-transform: uppercase;
+  color: var(--v2-text-muted);
+  margin-bottom: 4px;
+  display: block;
+}
+
+.controlValue {
+  color: var(--v2-text-primary);
+  font-variant-numeric: tabular-nums;
+}
+
+/* ── Editable slider value ─────────────────────────────────────────────────── */
+
+.editableValueSpan {
+  color: var(--v2-text-primary);
+  font-variant-numeric: tabular-nums;
+  cursor: text;
+  border-bottom: 1px solid transparent;
+  line-height: 1.2;
+  transition: border-color 120ms;
+  user-select: none;
+}
+
+.editableValueSpan:hover {
+  border-bottom-color: rgba(255, 255, 255, 0.25);
+}
+
+.editableValueInput {
+  font-family: inherit;
+  font-size: inherit;
+  font-variant-numeric: tabular-nums;
+  font-weight: inherit;
+  color: var(--v2-text-primary);
+  background: transparent;
+  border: none;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.5);
+  outline: none;
+  width: 68px;
+  text-align: right;
+  padding: 0;
+  line-height: 1.2;
+  /* Hide browser number-input spinners */
+  -moz-appearance: textfield;
+}
+
+.editableValueInput::-webkit-outer-spin-button,
+.editableValueInput::-webkit-inner-spin-button {
+  -webkit-appearance: none;
+  margin: 0;
+}
+
+.editableValueInput:focus {
+  border-bottom-color: rgba(255, 255, 255, 0.8);
+}
+
+/* ── Sliders ───────────────────────────────────────────────────────────────── */
+
+.slider {
+  width: 100%;
+  appearance: none;
+  height: 2px;
+  border-radius: 1px;
+  background: var(--v2-slider-track);
+  cursor: pointer;
+  outline: none;
+}
+
+.slider::-webkit-slider-thumb {
+  appearance: none;
+  width: 12px;
+  height: 12px;
+  border-radius: 50%;
+  background: var(--v2-slider-thumb);
+  cursor: pointer;
+  box-shadow: 0 0 0 2px rgba(0, 0, 0, 0.4);
+}
+
+.slider::-moz-range-thumb {
+  width: 12px;
+  height: 12px;
+  border-radius: 50%;
+  background: var(--v2-slider-thumb);
+  cursor: pointer;
+  border: none;
+  box-shadow: 0 0 0 2px rgba(0, 0, 0, 0.4);
+}
+
+/* ── Segmented control ─────────────────────────────────────────────────────── */
+
+.segmented {
+  display: flex;
+  border: 1px solid var(--v2-panel-border);
+  border-radius: 7px;
+  overflow: hidden;
+}
+
+.segmentBtn {
+  flex: 1;
+  padding: 6px 0;
+  background: transparent;
+  border: none;
+  color: var(--v2-text-muted);
+  font-family: inherit;
+  font-size: var(--v2-body-font-size);
+  font-weight: var(--v2-body-font-weight);
+  line-height: var(--v2-body-line-height);
+  cursor: pointer;
+  transition:
+    background 100ms,
+    color 100ms;
+}
+
+.segmentBtn:not(:last-child) {
+  border-right: 1px solid var(--v2-panel-border);
+}
+
+.segmentBtn:hover {
+  background: var(--v2-active-bg);
+  color: var(--v2-text-primary);
+}
+
+.segmentBtnActive {
+  background: var(--v2-selected-bg);
+  color: var(--v2-text-primary);
+}
+
+/* ── Timeline scrubber strip (slides up from bottom on mouse proximity) ─────── */
+
+.scrubberWrap {
+  position: fixed;
+  bottom: 0;
+  left: 16px;
+  right: 16px;
+  height: var(--v2-scrubber-height);
+  z-index: 25;
+  display: flex;
+  align-items: center;
+  pointer-events: auto;
+  transform: translateY(100%);
+  transition: transform 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+.scrubberWrapVisible {
+  transform: translateY(0);
+}
+
+.scrubberInner {
+  position: relative;
+  width: 100%;
+  height: 12px;
+  display: flex;
+  align-items: center;
+}
+
+.scrubberBeatLabel {
+  position: absolute;
+  bottom: 14px;
+  transform: translateX(-50%);
+  font-family: var(--v2-font-text);
+  font-size: 11px;
+  color: rgba(255, 255, 255, 0.5);
+  pointer-events: none;
+  user-select: none;
+  white-space: nowrap;
+  letter-spacing: 0.02em;
+}
+
+/* Hidden range input — sits on top and captures all pointer events */
+.scrubberInput {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  opacity: 0;
+  cursor: pointer;
+  z-index: 2;
+  margin: 0;
+}
+
+/* Visual segmented track */
+.scrubberTrack {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  gap: 3px;
+  width: 100%;
+  height: 3px;
+  top: 50%;
+  transform: translateY(-50%);
+  align-items: stretch;
+  z-index: 0;
+}
+
+.scrubberSegment {
+  height: 100%;
+  background: rgba(255, 255, 255, 0.3);
+  border-radius: 2px;
+}
+
+/* Custom scrubber thumb dot */
+.scrubberThumb {
+  position: absolute;
+  width: 10px;
+  height: 10px;
+  background: rgba(255, 255, 255, 0.8);
+  border-radius: 50%;
+  top: 50%;
+  transform: translate(-50%, -50%);
+  pointer-events: none;
+  z-index: 1;
+}
+
+/* ── Bottom navigation bar (pill, expands horizontally from right) ─────────── */
+
+.bottomNav {
+  position: fixed;
+  bottom: 32px;
+  right: 32px;
+  left: auto;
+  z-index: 30;
+  background: var(--v2-nav-bg);
+  border: 1px solid var(--v2-nav-border);
+  border-radius: 999px;
+  backdrop-filter: blur(20px);
+  -webkit-backdrop-filter: blur(20px);
+  display: flex;
+  flex-direction: row;
+  align-items: center;
+  gap: 8px;
+  padding: 6px;
+  overflow: hidden;
+  white-space: nowrap;
+  max-width: 520px;
+  transition: max-width 320ms cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+.bottomNavCollapsed {
+  max-width: 48px;
+  padding: 6px 8px;
+}
+
+/* Chevron toggle — first child of nav, always visible */
+.navChevron {
+  flex-shrink: 0;
+  width: 32px;
+  height: 32px;
+  background: transparent;
+  border: none;
+  color: #ffffff;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  padding: 0;
+  border-radius: 50%;
+  user-select: none;
+  transition: background 120ms;
+}
+
+.navChevron:hover {
+  background: var(--v2-active-bg);
+}
+
+.navBtn {
+  display: flex;
+  flex-direction: row;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 16px;
+  background: transparent;
+  border: none;
+  border-radius: 999px;
+  color: var(--v2-text-nav);
+  cursor: pointer;
+  font-family: inherit;
+  font-size: var(--ds-text-label);
+  font-weight: 400;
+  transition:
+    background 120ms,
+    color 120ms;
+  flex-shrink: 0;
+  white-space: nowrap;
+}
+
+.navBtn:hover {
+  background: var(--v2-active-bg);
+  color: var(--v2-text-primary);
+}
+
+.navBtnActive {
+  background: var(--v2-active-bg);
+  color: var(--v2-text-primary);
+}
+
+.navIcon {
+  width: var(--v2-icon-size);
+  height: var(--v2-icon-size);
+  flex-shrink: 0;
+  display: block;
+  margin-right: 0;
+}
+
+.navLabel {
+  font-size: var(--ds-text-label);
+  font-weight: 400;
+  line-height: 1;
+}
+
+/* ── Text overlay ──────────────────────────────────────────────────────────── */
+
+.textOverlay {
+  position: absolute;
+  bottom: 27%;
+  left: 0;
+  right: 0;
+  z-index: 10;
+  display: flex;
+  justify-content: center;
+  pointer-events: none;
+}
+
+.textBlock {
+  text-align: center;
+  pointer-events: auto;
+  opacity: 0;
+  transition: opacity 600ms ease;
+}
+
+.textBlockVisible {
+  opacity: 1;
+}
+
+.overlayHeadline {
+  font-family: var(--ds-font-family-display, var(--v2-font-display));
+  font-size: 28px;
+  font-weight: 400;
+  color: #ffffff;
+  text-align: center;
+  margin: 0;
+}
+
+.overlaySubtext {
+  font-family: var(--ds-font-family-text, var(--v2-font-text));
+  font-size: var(--ds-text-body-default);
+  color: rgba(255, 255, 255, 0.65);
+  text-align: center;
+  margin: 6px 0 0;
+}
+
+/* ── User name (top-right) ─────────────────────────────────────────────────── */
+
+.userName {
+  position: fixed;
+  top: 20px;
+  right: 20px;
+  z-index: 10;
+  font-family: var(--ds-font-family-text, var(--v2-font-text));
+  font-size: var(--ds-text-body-default);
+  color: rgba(255, 255, 255, 0.7);
+  pointer-events: none;
+  user-select: none;
+}
+
+.userChevron {
+  font-size: var(--ds-text-tiny);
+  opacity: 0.8;
+}
+
+.colorSelect {
+  background: rgba(255, 255, 255, 0.08);
+  border: 1px solid rgba(255, 255, 255, 0.15);
+  border-radius: 6px;
+  color: white;
+  font-family: var(--v2-font-text, monospace);
+  font-size: 12px;
+  padding: 4px 8px;
+  cursor: pointer;
+  width: 100%;
+}
+
+.colorSelect:focus {
+  outline: none;
+  border-color: rgba(255, 255, 255, 0.4);
+}
+
+.colorSelect option {
+  background: #1a1a2e;
+  color: white;
+}
+
+.resetButton {
+  background: transparent;
+  border: 1px solid rgba(255, 255, 255, 0.2);
+  border-radius: 6px;
+  color: rgba(255, 255, 255, 0.5);
+  cursor: pointer;
+  font-size: 11px;
+  letter-spacing: 0.04em;
+  padding: 4px 10px;
+  margin-top: 4px;
+  transition: border-color 0.15s, color 0.15s;
+}
+.resetButton:hover {
+  border-color: rgba(255, 255, 255, 0.5);
+  color: rgba(255, 255, 255, 0.9);
+}

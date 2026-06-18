@@ -1,8 +1,8 @@
-import { useFrame, useThree } from '@react-three/fiber';
+import { useFrame, useThree } from "@react-three/fiber";
 
-import { useEffect, useMemo, useRef, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from "react";
 
-import type { BufferGeometry } from 'three';
+import type { BufferGeometry } from "three";
 import {
   BufferAttribute,
   BufferGeometry as SkinGeometry,
@@ -10,10 +10,10 @@ import {
   NormalBlending,
   ShaderMaterial,
   Vector3,
-} from 'three';
-import type { Points as PointsMesh } from 'three';
+} from "three";
+import type { Points as PointsMesh } from "three";
 
-import { sampleMeshSurface } from '../utils/surfaceSampler';
+import { sampleMeshSurface } from "../utils/surfaceSampler";
 
 /* eslint-disable react-hooks/immutability -- ShaderMaterial uniforms & draw-range (Three.js uploads each frame). */
 
@@ -21,11 +21,18 @@ export interface ISkinParticleSystemProps {
   contourDensity: number;
   depthFade: number;
   geometry: BufferGeometry;
+  isDarkMode: boolean;
   normalShading: number;
   particleCount: number;
   particleSize: number;
+  proximityMode?: boolean;
+  /** Radius of the proximity reveal zone (world units). Defaults to 1.0. */
+  proximityRadius?: number;
   skinColor: string;
   skinOpacity: number;
+  swarmCentroid?: { x: number; y: number; z: number };
+  /** Y-plane of the sweep highlight; null/undefined = no highlight active. */
+  sweepHighlightY?: number | null;
 }
 
 const LIGHT_WORLD_DIR = new Vector3(0.5, 0.8, 0.35).normalize();
@@ -34,6 +41,7 @@ const LIGHT_WORLD_DIR = new Vector3(0.5, 0.8, 0.35).normalize();
 function skinUniformHandles() {
   return {
     camWorldPos: { value: new Vector3() },
+    isDarkMode: { value: 0.0 },
     lightWorldDir: { value: LIGHT_WORLD_DIR.clone() },
     skinBaseRgb: { value: new Vector3(1, 1, 1) },
     skinOpacity: { value: 1 },
@@ -43,6 +51,11 @@ function skinUniformHandles() {
     particleWorldRadius: { value: 1 },
     depthSpanHint: { value: 24 },
     focalPixelScale: { value: 420 },
+    sweepHighlightY: { value: -999.0 },
+    sweepHighlightActive: { value: 0.0 },
+    proximityMode: { value: 0.0 },
+    swarmCentroid: { value: new Vector3() },
+    proximityRadius: { value: 1.2 },
   };
 }
 
@@ -52,11 +65,16 @@ export default function SkinParticleSystem(props: ISkinParticleSystemProps) {
     contourDensity,
     depthFade,
     geometry,
+    isDarkMode,
     normalShading,
     particleCount,
     particleSize,
+    proximityMode = false,
+    proximityRadius = 1.0,
     skinColor,
     skinOpacity,
+    swarmCentroid,
+    sweepHighlightY = null,
   } = props;
 
   const { camera, viewport } = useThree();
@@ -65,7 +83,7 @@ export default function SkinParticleSystem(props: ISkinParticleSystemProps) {
   const tintColor = useMemo(() => new Color(skinColor), [skinColor]);
 
   const samples = useMemo(
-    () => sampleMeshSurface(geometry, particleCount, 'areaWeighted'),
+    () => sampleMeshSurface(geometry, particleCount, "areaWeighted"),
     [geometry, particleCount],
   );
 
@@ -73,15 +91,17 @@ export default function SkinParticleSystem(props: ISkinParticleSystemProps) {
     const geo = new SkinGeometry();
     const pos = Float32Array.from(samples.positions);
     const nurm = Float32Array.from(samples.normals);
-    geo.setAttribute('position', new BufferAttribute(pos, 3));
-    geo.setAttribute('instanceNormal', new BufferAttribute(nurm, 3));
+    geo.setAttribute("position", new BufferAttribute(pos, 3));
+    geo.setAttribute("instanceNormal", new BufferAttribute(nurm, 3));
     return geo;
   }, [samples.normals, samples.positions]);
 
   const depthSpanHintDerived = useMemo(() => {
     geometry.computeBoundingSphere();
     const sphere = geometry.boundingSphere;
-    return sphere && Number.isFinite(sphere.radius) ? Math.max(sphere.radius * 5.25, 2) : 24;
+    return sphere && Number.isFinite(sphere.radius)
+      ? Math.max(sphere.radius * 5.25, 2)
+      : 24;
   }, [geometry]);
 
   /** Single Three ShaderMaterial bundle; uniforms are tweaked every frame outside React reconciliation. */
@@ -126,6 +146,7 @@ export default function SkinParticleSystem(props: ISkinParticleSystemProps) {
     const uniforms = skinGpu.uniforms;
 
     uniforms.depthSpanHint.value = depthSpanHintDerived;
+    uniforms.isDarkMode.value = isDarkMode ? 1.0 : 0.0;
 
     uniforms.skinBaseRgb.value.set(tintColor.r, tintColor.g, tintColor.b);
 
@@ -133,7 +154,7 @@ export default function SkinParticleSystem(props: ISkinParticleSystemProps) {
     uniforms.camWorldPos.value.copy(camScratch.current);
 
     const projection = camera.projectionMatrix?.elements;
-    const pr = typeof projection?.[5] === 'number' ? projection[5] : 1;
+    const pr = typeof projection?.[5] === "number" ? projection[5] : 1;
     uniforms.focalPixelScale.value = (viewport.height * pr) / 2;
 
     uniforms.skinOpacity.value = skinOpacity;
@@ -142,6 +163,20 @@ export default function SkinParticleSystem(props: ISkinParticleSystemProps) {
     uniforms.skinContourDensity.value = contourDensity;
     uniforms.particleWorldRadius.value = particleSize * 3.0;
     uniforms.lightWorldDir.value.copy(LIGHT_WORLD_DIR);
+
+    const highlightActive = sweepHighlightY !== null;
+    uniforms.sweepHighlightY.value = highlightActive ? sweepHighlightY : -999.0;
+    uniforms.sweepHighlightActive.value = highlightActive ? 1.0 : 0.0;
+
+    uniforms.proximityMode.value = proximityMode ? 1.0 : 0.0;
+    uniforms.proximityRadius.value = proximityRadius;
+    if (swarmCentroid) {
+      uniforms.swarmCentroid.value.set(
+        swarmCentroid.x,
+        swarmCentroid.y,
+        swarmCentroid.z,
+      );
+    }
 
     const meshPoints = pointsRef.current;
 
@@ -166,6 +201,7 @@ const VERT_SHADER = /* glsl */ `
 attribute vec3 instanceNormal;
 
 uniform vec3 camWorldPos;
+uniform float isDarkMode;
 uniform vec3 lightWorldDir;
 uniform vec3 skinBaseRgb;
 uniform float skinOpacity;
@@ -175,17 +211,26 @@ uniform float skinContourDensity;
 uniform float particleWorldRadius;
 uniform float depthSpanHint;
 uniform float focalPixelScale;
+uniform float sweepHighlightY;
+uniform float sweepHighlightActive;
 
 varying vec3 vColor;
 varying float vAlpha;
+varying float vWorldY;
+varying vec3 vWorldPos;
 
 void main() {
   vec4 worldPos = modelMatrix * vec4(position, 1.0);
+  vWorldY = worldPos.y;
+  vWorldPos = worldPos.xyz;
 
   vec3 N = normalize(mat3(normalMatrix) * instanceNormal);
   vec3 V = normalize(camWorldPos - worldPos.xyz);
 
-  float edge = 1.0 - clamp(abs(dot(N, V)), 0.0, 1.0);
+  // Camera-facing dot product: +1 = faces camera, -1 = faces away
+  float facing = dot(N, V);
+
+  float edge = 1.0 - clamp(abs(facing), 0.0, 1.0);
 
   float NdL = max(dot(N, lightWorldDir), 0.0);
   float normalOpacity = mix(1.0, NdL, skinNormalShading);
@@ -194,16 +239,32 @@ void main() {
 
   float dist = length(camWorldPos - worldPos.xyz);
   float nDist = clamp(dist / depthSpanHint, 0.0, 1.0);
-  float depthOpacityMul = clamp(1.0 - skinDepthFade * nDist, 0.0, 1.0);
+  float effectiveDepthFade = skinDepthFade * mix(1.0, 0.5, isDarkMode);
+  float depthOpacityMul = clamp(1.0 - effectiveDepthFade * nDist, 0.0, 1.0);
 
-  float contourGlow = pow(edge, 2.05);
+  float contourPow = mix(2.05, 1.5, isDarkMode);
+  float contourGlow = pow(edge, contourPow);
   float contourAmp = mix(1.0, 1.0 + contourGlow * 0.62, clamp(skinContourDensity, 0.0, 1.0));
+
+  // 1. Camera-facing opacity boost: bright when facing camera, dim when facing away
+  float opacityMult = pow(max(0.0, facing * 0.5 + 0.7), 1.8);
+  opacityMult = clamp(opacityMult, 0.15, 1.0);
+
+  // 2. Rim enhancement: silhouette-edge particles get a subtle halo boost
+  float rimFactor = 1.0 - abs(facing);
+  float rimBoost = 0.3 * pow(rimFactor, 2.0);
+  float finalOpacityMult = clamp(opacityMult + rimBoost, 0.0, 1.0);
+
+  // 3. Size variation by facing angle: front-facing particles slightly larger
+  float sizeMult = 0.7 + 0.6 * max(0.0, facing);
   float radialSize =
     particleWorldRadius
+    * sizeMult
     * (1.0 - 0.3 * skinDepthFade * nDist)
     * mix(1.0, 1.0 + edge * 0.42, clamp(skinContourDensity, 0.0, 1.0));
 
-  float litBoost = pow(mix(0.38, 1.0, NdL), mix(1.5, 0.86, clamp(skinNormalShading, 0.0, 1.0)));
+  float litFloor = mix(0.38, 0.55, isDarkMode);
+  float litBoost = pow(mix(litFloor, 1.0, NdL), mix(1.5, 0.86, clamp(skinNormalShading, 0.0, 1.0)));
   litBoost *= mix(1.0, 0.5 + depthOpacityMul * 0.76, clamp(skinDepthFade, 0.0, 1.0));
   litBoost *= contourAmp;
 
@@ -211,19 +272,27 @@ void main() {
 
   vAlpha =
     clamp(
-      skinOpacity * depthOpacityMul * normalOpacity * mix(1.0, contourAmp * 1.06, contourGlow * clamp(skinContourDensity, 0.0, 1.0)),
-      0.001,
+      skinOpacity * depthOpacityMul * normalOpacity * finalOpacityMult * mix(1.0, contourAmp * 1.06, contourGlow * clamp(skinContourDensity, 0.0, 1.0)),
+      0.0,
       1.0);
 
   gl_Position = projectionMatrix * mvPosition;
   float invZ = max(0.002, -mvPosition.z);
-  gl_PointSize = clamp(radialSize * focalPixelScale / invZ, 3.0, 64.0);
+  gl_PointSize = clamp(radialSize * focalPixelScale / invZ, 2.0, 64.0);
 }
 `;
 
 const FRAG_SHADER = /* glsl */ `
+uniform float sweepHighlightY;
+uniform float sweepHighlightActive;
+uniform float proximityMode;
+uniform vec3 swarmCentroid;
+uniform float proximityRadius;
+
 varying vec3 vColor;
 varying float vAlpha;
+varying float vWorldY;
+varying vec3 vWorldPos;
 
 void main() {
   vec2 c = gl_PointCoord - vec2(0.5);
@@ -231,6 +300,21 @@ void main() {
   if (r > 0.5) discard;
 
   float soft = clamp(1.0 - smoothstep(0.38, 0.5, r), 0.0, 1.0);
-  gl_FragColor = vec4(vColor, vAlpha * soft);
+
+  float finalAlpha;
+  if (sweepHighlightActive > 0.5) {
+    float revealEdge = smoothstep(sweepHighlightY + 0.25, sweepHighlightY - 0.05, vWorldY);
+    finalAlpha = vAlpha * revealEdge;
+  } else {
+    finalAlpha = vAlpha;
+  }
+
+  if (proximityMode > 0.5) {
+    float dist = length(vWorldPos - swarmCentroid);
+    float proxFade = 1.0 - smoothstep(0.0, proximityRadius, dist);
+    finalAlpha *= proxFade;
+  }
+
+  gl_FragColor = vec4(vColor, finalAlpha * soft);
 }
 `;
