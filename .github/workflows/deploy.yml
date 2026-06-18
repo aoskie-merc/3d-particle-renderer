@@ -28,11 +28,8 @@ jobs:
         with:
           node-version: '22'
 
-      - name: Pin npm to stable version
-        run: npm install -g npm@10
-
       - name: Install dependencies
-        run: npm install --legacy-peer-deps
+        run: npm install --ignore-scripts --legacy-peer-deps
 
       - name: Build
         run: npm run build
