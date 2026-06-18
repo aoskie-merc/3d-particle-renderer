@@ -28,8 +28,16 @@ jobs:
         with:
           node-version: '22'
 
+      - name: Downgrade npm to v9
+        run: npm install -g npm@9
+
       - name: Install dependencies
-        run: npm install --ignore-scripts --legacy-peer-deps
+        run: npm install --legacy-peer-deps
+        continue-on-error: true
+
+      - name: Show npm debug log on failure
+        if: failure()
+        run: cat /home/runner/.npm/_logs/*.log 2>/dev/null | tail -100 || echo "No debug log found"
 
       - name: Build
         run: npm run build
