@@ -818,7 +818,7 @@ export default function AppV2() {
       {/* ── Logo mark ───────────────────────────────────────────────────── */}
       <img
         className={styles.logoMark}
-        src="/mercury-logo-lockup.svg"
+        src={`${import.meta.env.BASE_URL}mercury-logo-lockup.svg`}
         alt="Mercury"
         draggable={false}
       />
