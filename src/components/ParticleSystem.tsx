@@ -1,50 +1,98 @@
-import { useFrame } from '@react-three/fiber';
+import { useFrame } from "@react-three/fiber";
 
-import { useEffect, useLayoutEffect, useMemo, useRef } from 'react';
+import { useEffect, useLayoutEffect, useMemo, useRef } from "react";
 
-import type { BufferGeometry, InstancedMesh } from 'three';
+import type { BufferGeometry, InstancedMesh } from "three";
 import {
   AdditiveBlending,
   DynamicDrawUsage,
   MeshBasicMaterial,
   MultiplyBlending,
   NormalBlending,
-  Object3D,
   SphereGeometry,
-  Vector3,
-} from 'three';
+} from "three";
 
-import type { TBlendModeKey, TDirectionBias, TDistributionMethod } from '../types';
-import { turbulence3 } from '../utils/noise';
-import { PARTICLE_CAPACITY, sampleMeshSurface } from '../utils/surfaceSampler';
+import type { TBlendModeKey, TDistributionMethod } from "../types";
+import type { IBoidParams } from "../sim/boidParams";
+import { BOID_DEFAULTS } from "../sim/boidParams";
+import type { IBoidParticle } from "../sim/boids3d";
+import { createBoidParticles, stepBoids } from "../sim/boids3d";
+import { PARTICLE_CAPACITY, sampleMeshSurface } from "../utils/surfaceSampler";
 
 export interface IParticleSystemProps {
   geometry: BufferGeometry;
   particleCount: number;
   distribution: TDistributionMethod;
   surfaceNormalOffset: number;
-  movementSpeed: number;
-  movementAmplitude: number;
-  directionBias: TDirectionBias;
-  vibrationFrequency: number;
-  vibrationAmplitude: number;
-  vibrationDamping: number;
-  vibrationNoiseScale: number;
   particleSize: number;
   color: string;
   opacity: number;
   blendMode: TBlendModeKey;
+  boidVisualRange: number;
+  boidSeparation: number;
+  boidAlignment: number;
+  boidCohesion: number;
+  boidHomeSpring: number;
+  boidSpeedLimit: number;
+  boidNoise: number;
+  swarmOrbitSpeed: number;
+  swarmOrbitRadius: number;
+  swarmSwirlStrength: number;
+  swarmSplitIntensity: number;
+  swarmSplitSpeed: number;
+  /** External pulse timestamp — triggers an extra split burst (e.g. verification check complete) */
+  pulseTimestamp?: number;
+  /** When set, overrides the Lissajous attractor with a fixed position (used by sweep triggers). */
+  attractorOverride?: { x: number; y: number; z: number } | null;
+  /** Multiplier for attractorFactor when attractorOverride is active. Defaults to 6. */
+  attractorBoost?: number;
+  /** When set, overrides homeSpringFactor (used to snap particles to surface after enter). */
+  homeSpringOverride?: number;
+  /** When timestamp changes, teleport all boids to the given position with random scatter. */
+  teleportSignal?: {
+    x: number;
+    y: number;
+    z: number;
+    timestamp: number;
+    scatterX?: number;
+    scatterY?: number;
+    nearFraction?: number;
+    nearZMin?: number;
+    nearZMax?: number;
+    farZMin?: number;
+    farZMax?: number;
+  } | null;
+  /** When value changes, zero all boid velocities (used after enter animation ends). */
+  resetVelocitiesSignal?: number;
+  /** Called each frame with the averaged centroid position of all boids. */
+  onCentroidUpdate?: (pos: { x: number; y: number; z: number }) => void;
+  /** Multiplier applied to the boid speed limit (e.g. 0.5 for half-speed). Defaults to 1. */
+  speedMultiplier?: number;
+  /** Multiplier applied to boidNoise (e.g. 0.35 to reduce jitter in initial state). Defaults to 1. */
+  noiseMultiplier?: number;
+  /** When set, overrides steeringInertia in the non-animating state (e.g. 0.92 for initial to reduce micro-oscillations). */
+  steeringInertiaOverride?: number;
+  /** When set, overrides swarmSwirlStrength (e.g. 0.04 for strong orbital motion in orb enter). */
+  swirlStrengthOverride?: number;
+  /** When > 0, uses a shell attractor pulling particles to this radius from attractorOverride center. */
+  shellAttractorRadius?: number;
+  /** When set, overrides cohesionFactor (e.g. 0 to disable cohesion during orb enter so it doesn't fight the shell attractor). */
+  cohesionOverride?: number;
+  /** When set, overrides separationFactor (e.g. 0 to disable separation during orb enter). */
+  separationOverride?: number;
+  /** When set, overrides alignmentFactor (e.g. 0 to disable alignment during orb enter). */
+  alignmentOverride?: number;
+  /** Multiplier applied to the final rendered opacity (e.g. 0.5 to dim in formed state). Defaults to 1. */
+  opacityMultiplier?: number;
 }
-
-const TWO_PI = Math.PI * 2;
 
 const blendingForMode = (mode: TBlendModeKey) => {
   switch (mode) {
-    case 'additive':
+    case "additive":
       return AdditiveBlending;
-    case 'multiply':
+    case "multiply":
       return MultiplyBlending;
-    case 'normal':
+    case "normal":
     default:
       return NormalBlending;
   }
@@ -53,24 +101,64 @@ const blendingForMode = (mode: TBlendModeKey) => {
 export default function ParticleSystem(props: IParticleSystemProps) {
   const {
     blendMode,
+    boidAlignment,
+    boidCohesion,
+    boidHomeSpring,
+    boidNoise,
+    boidSeparation,
+    boidSpeedLimit,
+    boidVisualRange,
     color,
-    directionBias,
     distribution,
     geometry,
-    movementAmplitude,
-    movementSpeed,
     opacity,
     particleCount,
     particleSize,
     surfaceNormalOffset,
-    vibrationAmplitude,
-    vibrationDamping,
-    vibrationFrequency,
-    vibrationNoiseScale,
+    swarmOrbitSpeed,
+    swarmOrbitRadius,
+    swarmSwirlStrength,
+    swarmSplitIntensity,
+    swarmSplitSpeed,
+  } = props;
+
+  const {
+    attractorOverride = null,
+    attractorBoost = 6,
+    homeSpringOverride,
+    pulseTimestamp = 0,
+    teleportSignal = null,
+    resetVelocitiesSignal,
+    onCentroidUpdate,
+    speedMultiplier = 1,
+    noiseMultiplier,
+    steeringInertiaOverride,
+    swirlStrengthOverride,
+    shellAttractorRadius,
+    cohesionOverride,
+    separationOverride,
+    alignmentOverride,
+    opacityMultiplier = 1,
   } = props;
 
   const meshRef = useRef<InstancedMesh>(null);
-  const dummy = useMemo(() => new Object3D(), []);
+  const boidsRef = useRef<IBoidParticle[]>([]);
+  const sizeRef = useRef(particleSize);
+  sizeRef.current = particleSize;
+  const opacityRef = useRef(opacity);
+  opacityRef.current = opacity;
+  const opacityMultiplierRef = useRef(opacityMultiplier);
+  opacityMultiplierRef.current = opacityMultiplier;
+
+  const shellElapsedRef = useRef(0);
+  const prevShellRadiusRef = useRef(0);
+
+  const pulseIntensityRef = useRef(0);
+  const lastPulseRef = useRef(0);
+  if (pulseTimestamp !== lastPulseRef.current && pulseTimestamp > 0) {
+    pulseIntensityRef.current = 1;
+    lastPulseRef.current = pulseTimestamp;
+  }
 
   const samples = useMemo(
     () => sampleMeshSurface(geometry, particleCount, distribution),
@@ -79,28 +167,170 @@ export default function ParticleSystem(props: IParticleSystemProps) {
 
   const count = samples.positions.length / 3;
 
-  const animation = useMemo(() => {
-    const movePhase = new Float32Array(count);
-    const vibPhase = new Float32Array(count);
-    const randomDir = new Float32Array(count * 3);
+  useEffect(() => {
+    boidsRef.current = createBoidParticles(
+      samples.positions,
+      samples.normals,
+      count,
+      surfaceNormalOffset,
+    );
+  }, [samples, count, surfaceNormalOffset]);
 
-    for (let index = 0; index < count; index += 1) {
-      movePhase[index] = seed01(index + 173) * TWO_PI;
-      vibPhase[index] = seed01(index + 983) * TWO_PI;
+  const lastTeleportRef = useRef(0);
+  useEffect(() => {
+    if (!teleportSignal || teleportSignal.timestamp === lastTeleportRef.current)
+      return;
+    lastTeleportRef.current = teleportSignal.timestamp;
+    const {
+      x,
+      y,
+      z,
+      scatterX,
+      scatterY,
+      nearFraction,
+      nearZMin,
+      nearZMax,
+      farZMin,
+      farZMax,
+    } = teleportSignal;
 
-      const base = index * 3;
-      randomDir[base] = seed01(index * 3 + 211) * 2 - 1;
-      randomDir[base + 1] = seed01(index * 3 + 389) * 2 - 1;
-      randomDir[base + 2] = seed01(index * 3 + 571) * 2 - 1;
-      normalizeInPlace(randomDir, base);
+    const swirlSpeed = 0.008;
+    const boids = boidsRef.current;
+    for (let i = 0; i < boids.length; i++) {
+      const b = boids[i];
+      if (
+        nearFraction !== undefined &&
+        farZMin !== undefined &&
+        farZMax !== undefined &&
+        nearZMin !== undefined &&
+        nearZMax !== undefined
+      ) {
+        const sX = scatterX ?? 0.7;
+        const sY = scatterY ?? 0.7;
+        const isNear = Math.random() < nearFraction;
+        const zRange = isNear
+          ? nearZMin + Math.random() * (nearZMax - nearZMin)
+          : farZMin + Math.random() * (farZMax - farZMin);
+        b.x = x + (Math.random() - 0.5) * sX;
+        b.y = y + (Math.random() - 0.5) * sY - Math.random() * sY;
+        b.z = zRange;
+      } else {
+        const scatter = 0.7;
+        b.x = x + (Math.random() - 0.5) * scatter;
+        b.y = y + (Math.random() - 0.5) * scatter;
+        b.z = z + (Math.random() - 0.5) * scatter;
+      }
+      b.vx = (Math.random() - 0.5) * swirlSpeed;
+      b.vy = (Math.random() - 0.5) * swirlSpeed;
+      b.vz = (Math.random() - 0.5) * swirlSpeed;
     }
+  }, [teleportSignal]);
 
-    return {
-      movePhase,
-      randomDir,
-      vibPhase,
+  const lastResetSignalRef = useRef<number | undefined>(undefined);
+  useEffect(() => {
+    if (
+      resetVelocitiesSignal === undefined ||
+      resetVelocitiesSignal === lastResetSignalRef.current
+    )
+      return;
+    lastResetSignalRef.current = resetVelocitiesSignal;
+    const boids = boidsRef.current;
+    for (let i = 0; i < boids.length; i++) {
+      boids[i].vx = 0;
+      boids[i].vy = 0;
+      boids[i].vz = 0;
+    }
+  }, [resetVelocitiesSignal]);
+
+  const boidParamsRef = useRef<IBoidParams>({ ...BOID_DEFAULTS });
+
+  useEffect(() => {
+    const isAnimating =
+      (attractorOverride && attractorBoost > 6) ||
+      (homeSpringOverride !== undefined && homeSpringOverride > 0.005);
+    boidParamsRef.current = {
+      visualRange: boidVisualRange,
+      separationDist: boidVisualRange * 0.21,
+      separationFactor:
+        separationOverride !== undefined
+          ? separationOverride
+          : isAnimating
+            ? boidSeparation * 0.1
+            : boidSeparation,
+      alignmentFactor:
+        alignmentOverride !== undefined
+          ? alignmentOverride
+          : isAnimating
+            ? boidAlignment * 0.15
+            : boidAlignment,
+      cohesionFactor:
+        cohesionOverride !== undefined
+          ? cohesionOverride
+          : isAnimating
+            ? boidCohesion * 0.1
+            : boidCohesion,
+      attractorFactor: attractorOverride
+        ? BOID_DEFAULTS.attractorFactor * attractorBoost
+        : BOID_DEFAULTS.attractorFactor,
+      homeSpringFactor:
+        homeSpringOverride !== undefined
+          ? homeSpringOverride
+          : attractorOverride
+            ? boidHomeSpring * 0.05
+            : boidHomeSpring,
+      maxHomeDistance: BOID_DEFAULTS.maxHomeDistance,
+      speedLimit: isAnimating
+        ? boidSpeedLimit *
+          (speedMultiplier ?? 1) *
+          Math.max(
+            attractorBoost ?? 6,
+            homeSpringOverride !== undefined ? homeSpringOverride * 600 : 1,
+          )
+        : boidSpeedLimit * (speedMultiplier ?? 1),
+      minSpeed: boidSpeedLimit * 0.32,
+      noiseMagnitude: isAnimating ? 0 : boidNoise * (noiseMultiplier ?? 1),
+      orbitSpeed: swarmOrbitSpeed,
+      orbitRadius: swarmOrbitRadius,
+      splitIntensity: isAnimating ? 0 : swarmSplitIntensity,
+      splitSpeed: swarmSplitSpeed,
+      splitDecay: BOID_DEFAULTS.splitDecay,
+      steeringInertia: isAnimating
+        ? 0.3
+        : (steeringInertiaOverride ?? BOID_DEFAULTS.steeringInertia),
+      swirlStrength: isAnimating
+        ? 0
+        : (swirlStrengthOverride ?? swarmSwirlStrength),
+      velocityStretchFactor: isAnimating
+        ? 0
+        : BOID_DEFAULTS.velocityStretchFactor,
+      attractorOverride,
+      shellAttractorRadius: shellAttractorRadius ?? 0,
     };
-  }, [count]);
+  }, [
+    attractorBoost,
+    attractorOverride,
+    alignmentOverride,
+    cohesionOverride,
+    separationOverride,
+    shellAttractorRadius,
+    boidAlignment,
+    boidCohesion,
+    boidHomeSpring,
+    boidNoise,
+    boidSeparation,
+    boidSpeedLimit,
+    boidVisualRange,
+    homeSpringOverride,
+    noiseMultiplier,
+    speedMultiplier,
+    steeringInertiaOverride,
+    swirlStrengthOverride,
+    swarmOrbitSpeed,
+    swarmOrbitRadius,
+    swarmSwirlStrength,
+    swarmSplitIntensity,
+    swarmSplitSpeed,
+  ]);
 
   const baseGeometry = useMemo(() => new SphereGeometry(1, 12, 12), []);
 
@@ -114,7 +344,6 @@ export default function ParticleSystem(props: IParticleSystemProps) {
         toneMapped: false,
         transparent: true,
       }),
-    // Stable reference — never recreate
     // eslint-disable-next-line react-hooks/exhaustive-deps
     [],
   );
@@ -123,8 +352,8 @@ export default function ParticleSystem(props: IParticleSystemProps) {
     material.color.set(color);
     material.opacity = opacity;
     material.blending = blendingForMode(blendMode);
-    material.depthWrite = blendMode === 'normal' ? opacity >= 1 : false;
-    material.transparent = opacity < 1 || blendMode !== 'normal';
+    material.depthWrite = false;
+    material.transparent = opacity < 1 || blendMode !== "normal";
     material.needsUpdate = true;
   }, [material, blendMode, color, opacity]);
 
@@ -133,10 +362,6 @@ export default function ParticleSystem(props: IParticleSystemProps) {
       material.dispose();
     };
   }, [material]);
-
-  const scratchRadial = useMemo(() => new Vector3(), []);
-  const scratchTangent = useMemo(() => new Vector3(), []);
-  const scratchNormal = useMemo(() => new Vector3(), []);
 
   useLayoutEffect(() => {
     const mesh = meshRef.current;
@@ -148,137 +373,106 @@ export default function ParticleSystem(props: IParticleSystemProps) {
     mesh.instanceMatrix.setUsage(DynamicDrawUsage);
     mesh.count = count;
 
-    dummy.rotation.set(0, 0, 0);
-    const samplePositions = samples.positions;
-    const sampleNormals = samples.normals;
+    const arr = mesh.instanceMatrix.array as Float32Array;
+    const boids = boidsRef.current;
+    const s = particleSize;
 
-    for (let index = 0; index < count; index += 1) {
-      const offset = index * 3;
-
-      dummy.position.set(
-        samplePositions[offset],
-        samplePositions[offset + 1],
-        samplePositions[offset + 2],
-      );
-
-      scratchNormal.set(
-        sampleNormals[offset],
-        sampleNormals[offset + 1],
-        sampleNormals[offset + 2],
-      );
-
-      dummy.position.addScaledVector(scratchNormal, surfaceNormalOffset);
-      dummy.scale.setScalar(particleSize);
-      dummy.updateMatrix();
-      mesh.setMatrixAt(index, dummy.matrix);
+    for (let i = 0; i < count; i += 1) {
+      const b = boids[i];
+      if (!b) continue;
+      const off = i * 16;
+      arr[off] = s;
+      arr[off + 1] = 0;
+      arr[off + 2] = 0;
+      arr[off + 3] = 0;
+      arr[off + 4] = 0;
+      arr[off + 5] = s;
+      arr[off + 6] = 0;
+      arr[off + 7] = 0;
+      arr[off + 8] = 0;
+      arr[off + 9] = 0;
+      arr[off + 10] = s;
+      arr[off + 11] = 0;
+      arr[off + 12] = b.x;
+      arr[off + 13] = b.y;
+      arr[off + 14] = b.z;
+      arr[off + 15] = 1;
     }
 
     mesh.instanceMatrix.needsUpdate = true;
-  }, [
-    count,
-    dummy,
-    particleSize,
-    samples,
-    scratchNormal,
-    surfaceNormalOffset,
-  ]);
+  }, [count, particleSize, samples]);
 
-  const scratchMove = useMemo(() => new Vector3(), []);
-  const scratchTemp = useMemo(() => new Vector3(), []);
-  const up = useMemo(() => new Vector3(0, 1, 0), []);
-
-  useFrame((state) => {
+  useFrame((state, delta) => {
     const mesh = meshRef.current;
+    const boids = boidsRef.current;
 
-    if (!mesh || count <= 0) {
+    if (!mesh || count <= 0 || boids.length === 0) {
       return;
     }
 
-    const elapsed = state.clock.elapsedTime;
-    const dampMul = 1 / (1 + vibrationDamping);
-    const { movePhase, randomDir, vibPhase } = animation;
-    const { normals, positions } = samples;
+    // Track time since the shell attractor was last activated so the tumbling
+    // axis uses a local clock instead of the ever-growing global elapsed time.
+    const currentShellRadius = shellAttractorRadius ?? 0;
+    if (currentShellRadius > 0) {
+      if (prevShellRadiusRef.current === 0) {
+        shellElapsedRef.current = 0;
+      }
+      shellElapsedRef.current += delta;
+    }
+    prevShellRadiusRef.current = currentShellRadius;
+
+    boidParamsRef.current.shellElapsed = shellElapsedRef.current;
+
+    // Decay external pulse and temporarily boost split intensity
+    const pulse = pulseIntensityRef.current;
+    if (pulse > 0.01) {
+      pulseIntensityRef.current *= 0.97;
+      const params = boidParamsRef.current;
+      const boosted = {
+        ...params,
+        splitIntensity: params.splitIntensity + pulse * 0.5,
+      };
+      stepBoids(boids, boosted, state.clock.elapsedTime);
+    } else {
+      stepBoids(boids, boidParamsRef.current, state.clock.elapsedTime);
+    }
+
+    const arr = mesh.instanceMatrix.array as Float32Array;
+    const s = sizeRef.current;
+
+    let cx = 0;
+    let cy = 0;
+    let cz = 0;
 
     for (let i = 0; i < count; i += 1) {
-      const offset = i * 3;
-
-      scratchNormal.set(
-        normals[offset],
-        normals[offset + 1],
-        normals[offset + 2],
-      );
-
-      dummy.position.set(
-        positions[offset],
-        positions[offset + 1],
-        positions[offset + 2],
-      );
-
-      dummy.position.addScaledVector(scratchNormal, surfaceNormalOffset);
-
-      scratchRadial.copy(dummy.position).normalize();
-
-      scratchTangent.copy(scratchRadial).sub(
-        scratchTemp.copy(scratchNormal).multiplyScalar(
-          scratchRadial.dot(scratchNormal),
-        ),
-      );
-
-      if (scratchTangent.lengthSq() < 1e-6) {
-        scratchTangent.copy(up).cross(scratchNormal).normalize();
-
-        if (scratchTangent.lengthSq() < 1e-6) {
-          scratchTangent.copy(scratchNormal).cross(scratchRadial).normalize();
-        }
-      } else {
-        scratchTangent.normalize();
-      }
-
-      const randomX = randomDir[offset];
-      const randomY = randomDir[offset + 1];
-      const randomZ = randomDir[offset + 2];
-      scratchMove.set(randomX, randomY, randomZ);
-
-      switch (directionBias) {
-        case 'radial':
-          scratchMove.copy(scratchRadial);
-          break;
-        case 'tangential':
-          scratchMove.copy(scratchTangent);
-          break;
-        case 'random':
-        default:
-          break;
-      }
-
-      const oscillationMovement =
-        movementAmplitude * Math.sin(movementSpeed * elapsed + movePhase[i]);
-      dummy.position.addScaledVector(scratchMove, oscillationMovement);
-
-      const harmonic =
-        vibrationAmplitude *
-        dampMul *
-        Math.sin(elapsed * TWO_PI * vibrationFrequency + vibPhase[i]);
-
-      let noiseContribution = turbulence3(
-        dummy.position.x * vibrationNoiseScale,
-        dummy.position.y * vibrationNoiseScale,
-        dummy.position.z * vibrationNoiseScale + vibrationFrequency * elapsed * 0.18,
-        elapsed + movePhase[i] * 0.33,
-      );
-
-      noiseContribution *= vibrationAmplitude * dampMul * 0.28;
-
-      dummy.position.addScaledVector(scratchNormal, harmonic + noiseContribution);
-
-      dummy.rotation.set(0, 0, 0);
-
-      dummy.scale.setScalar(particleSize);
-      dummy.updateMatrix();
-      mesh.setMatrixAt(i, dummy.matrix);
+      const b = boids[i];
+      const off = i * 16;
+      arr[off] = s;
+      arr[off + 5] = s;
+      arr[off + 10] = s;
+      arr[off + 12] = b.x;
+      arr[off + 13] = b.y;
+      arr[off + 14] = b.z;
+      cx += b.x;
+      cy += b.y;
+      cz += b.z;
     }
 
     mesh.instanceMatrix.needsUpdate = true;
+
+    // Apply opacity multiplier per-frame so it stays reactive without
+    // adding to the useEffect dep array (avoids hook array-size violations).
+    const effectiveOpacity = opacityRef.current * opacityMultiplierRef.current;
+    if (material.opacity !== effectiveOpacity) {
+      material.opacity = effectiveOpacity;
+      material.transparent =
+        effectiveOpacity < 1 || material.blending !== NormalBlending;
+      material.needsUpdate = true;
+    }
+
+    if (onCentroidUpdate && count > 0) {
+      onCentroidUpdate({ x: cx / count, y: cy / count, z: cz / count });
+    }
   });
 
   return (
@@ -289,33 +483,4 @@ export default function ParticleSystem(props: IParticleSystemProps) {
       renderOrder={10}
     />
   );
-}
-
-function seed01(i: number): number {
-  const x = Math.sin(i * 12.9898) * 43758.5453;
-  return x - Math.floor(x);
-}
-
-function normalizeInPlace(store: Float32Array, ptr: number) {
-  let x = store[ptr];
-  let y = store[ptr + 1];
-  let z = store[ptr + 2];
-
-  const lenSq = x * x + y * y + z * z;
-
-  if (lenSq < 1e-12) {
-    store[ptr] = 1;
-    store[ptr + 1] = 0;
-    store[ptr + 2] = 0;
-    return;
-  }
-
-  const invLen = 1 / Math.sqrt(lenSq);
-  x *= invLen;
-  y *= invLen;
-  z *= invLen;
-
-  store[ptr] = x;
-  store[ptr + 1] = y;
-  store[ptr + 2] = z;
 }

@@ -1,3 +1,37 @@
+/* ── Mercury font-face declarations ─────────────────────────────────────── */
+
+/* Arcadia Text — primary UI typeface (Mercury --ds-font-family-text) */
+@font-face {
+  font-weight: 400 500;
+  font-family: 'Arcadia Text';
+  src: url('/ArcadiaText-Variable.woff2') format('woff2');
+  font-display: block;
+}
+
+/* Arcadia Display — display/heading typeface (Mercury --ds-font-family-display) */
+@font-face {
+  font-weight: 380 500;
+  font-family: 'Arcadia Display';
+  src: url('/ArcadiaDisplay-Variable.woff2') format('woff2');
+  font-display: block;
+}
+
+/* Roboto Mono — monospace (Mercury --ds-font-family-monospace) */
+@font-face {
+  font-weight: 400;
+  font-family: 'Roboto Mono';
+  src: url('/roboto-mono-latin-400-normal.woff2') format('woff2');
+  font-display: block;
+}
+
+/* ── Mercury DS font-family tokens ──────────────────────────────────────── */
+
+:root {
+  --ds-font-family-display: 'Arcadia Display', system-ui, sans-serif;
+  --ds-font-family-text: 'Arcadia Text', system-ui, sans-serif;
+  --ds-font-family-monospace: 'Roboto Mono', monospace;
+}
+
 *,
 *::before,
 *::after {
@@ -32,6 +66,16 @@ body,
   display: block;
   height: 100%;
   width: 100%;
+}
+
+.loading-model {
+  position: fixed;
+  inset: 0;
+  display: grid;
+  place-items: center;
+  font-size: 1.1rem;
+  color: var(--app-text-muted);
+  background: var(--app-shell-bg);
 }
 
 .mesh-error-toast {
