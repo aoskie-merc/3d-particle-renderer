@@ -26,7 +26,7 @@
   --app-landing-panel-base: rgb(255 255 255); /* ds-background-default */
   --app-landing-title: #1e1e2a; /* ds-text-emphasized / title lineage */
   --app-landing-subtitle: #535461; /* ds-text-secondary */
-  --app-landing-panel-dash: rgb(55 71 217 / 0.42); /* darker dash on light */
+  --app-landing-panel-dash: #7073931a; /* ds-border-default light */
   --app-landing-panel-dash-active: rgb(82 102 235 / 0.58); /* accent */
   --app-landing-panel-inset-ring: rgb(118 146 239 / 0.24);
   --app-landing-panel-ambient: rgb(71 132 239 / 0.12);
@@ -93,7 +93,7 @@
   --app-landing-panel-base: rgb(39 39 53); /* #272735 — ds-background-surface-floating */
   --app-landing-title: #ffffff; /* ds-text-title */
   --app-landing-subtitle: #c3c3cc; /* ds-text-secondary */
-  --app-landing-panel-dash: rgb(169 223 239 / 0.36); /* lighter on dark canvas */
+  --app-landing-panel-dash: #b4b7c81f; /* ds-border-default dark */
   --app-landing-panel-dash-active: rgb(141 164 245 / 0.55);
   --app-landing-panel-inset-ring: rgb(119 190 207 / 0.18);
   --app-landing-panel-ambient: rgb(119 190 207 / 0.12);

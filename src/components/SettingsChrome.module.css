@@ -1,3 +1,5 @@
+/* ─── Panel shell ─────────────────────────────────────────── */
+
 .sheet {
   position: fixed;
   top: 0;
@@ -7,7 +9,7 @@
   display: flex;
   flex-direction: column;
   width: min(400px, 92vw);
-  font-size: 0.92rem;
+  font-size: 0.875rem;
   pointer-events: none;
   visibility: hidden;
   color: var(--app-text-strong);
@@ -41,7 +43,7 @@
   flex-shrink: 0;
   align-items: flex-start;
   justify-content: space-between;
-  padding: 20px 20px 8px;
+  padding: 20px 20px 12px;
   border-bottom: 1px solid var(--app-sheet-head-rule);
 }
 
@@ -98,15 +100,295 @@
     0 0 0 3px var(--app-ds-focus-ring-outer);
 }
 
+/* ─── Scrollable body ────────────────────────────────────── */
+
 .sheetBody {
   flex: 1;
   min-height: 0;
-  display: grid;
-  row-gap: 24px;
-  padding: 20px;
+  display: flex;
+  flex-direction: column;
+  gap: 0;
+  padding: 8px 0;
   overflow-y: auto;
   scrollbar-color: var(--app-scrollbar-thumb) var(--app-scrollbar-track);
 }
+
+/* ─── Collapsible sections ───────────────────────────────── */
+
+.section {
+  border-top: 1px solid var(--app-sheet-head-rule);
+}
+
+.section:first-child {
+  border-top: none;
+}
+
+.sectionHeader {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  width: 100%;
+  padding: 12px 20px;
+  margin: 0;
+  border: none;
+  background: transparent;
+  color: var(--app-text-strong);
+  cursor: pointer;
+  text-align: left;
+  font-family: inherit;
+  font-size: 0.8rem;
+  font-weight: 600;
+  letter-spacing: 0.03em;
+  transition: background-color 180ms ease;
+}
+
+.sectionHeader:hover {
+  background: var(--app-ds-icon-btn-hover-bg);
+}
+
+.sectionTitle {
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+}
+
+.chevron {
+  display: inline-block;
+  font-size: 1.1rem;
+  line-height: 1;
+  color: var(--app-text-muted);
+  transform: rotate(0deg);
+  transition: transform 220ms ease;
+}
+
+.chevronOpen {
+  transform: rotate(90deg);
+}
+
+.sectionContent {
+  display: grid;
+  grid-template-rows: 0fr;
+  transition: grid-template-rows 280ms cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+.sectionContentOpen {
+  grid-template-rows: 1fr;
+}
+
+.sectionInner {
+  overflow: hidden;
+  display: grid;
+  row-gap: 12px;
+  padding: 0 20px;
+  /* Animate padding for clean collapse */
+  max-height: 0;
+  padding-top: 0;
+  padding-bottom: 0;
+  transition:
+    max-height 280ms cubic-bezier(0.4, 0, 0.2, 1),
+    padding 280ms cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+.sectionContentOpen .sectionInner {
+  max-height: 2000px;
+  padding-top: 4px;
+  padding-bottom: 16px;
+}
+
+/* ─── Slider rows ────────────────────────────────────────── */
+
+.row {
+  display: grid;
+  row-gap: 6px;
+  padding-block: 2px;
+}
+
+.rowDisabled {
+  opacity: 0.4;
+  pointer-events: none;
+}
+
+.rowHeading {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.label {
+  font-size: 0.8rem;
+  color: var(--app-text-muted);
+}
+
+.valueChip {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+}
+
+.suffix {
+  font-size: 0.72rem;
+  color: var(--app-text-muted);
+  letter-spacing: 0.02em;
+}
+
+.num {
+  width: min(110px, 32vw);
+  padding: 4px 8px;
+  border-radius: 8px;
+  border: 1px solid var(--app-input-border);
+  background: var(--app-input-bg);
+  color: var(--app-input-text);
+  font-size: 0.8rem;
+  font-variant-numeric: tabular-nums;
+  font-family: inherit;
+  transition: border-color 180ms ease;
+}
+
+.num:focus {
+  outline: none;
+  border-color: var(--app-range-accent);
+}
+
+.range {
+  width: 100%;
+  accent-color: var(--app-range-accent);
+  height: 4px;
+}
+
+/* ─── Select rows ────────────────────────────────────────── */
+
+.selectRow {
+  display: grid;
+  row-gap: 6px;
+}
+
+.select {
+  width: 100%;
+  padding: 8px 10px;
+  border-radius: 8px;
+  border: 1px solid var(--app-input-border);
+  background: var(--app-input-bg);
+  color: var(--app-input-text);
+  font-size: 0.8rem;
+  font-family: inherit;
+  cursor: pointer;
+  transition: border-color 180ms ease;
+}
+
+.select:focus {
+  outline: none;
+  border-color: var(--app-range-accent);
+}
+
+/* ─── Color picker ───────────────────────────────────────── */
+
+.colorRow {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding-block: 2px;
+}
+
+.colorControl {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.colorSwatch {
+  width: 28px;
+  height: 28px;
+  padding: 0;
+  margin: 0;
+  border: 2px solid var(--app-input-border);
+  border-radius: 50%;
+  cursor: pointer;
+  flex-shrink: 0;
+  background: transparent;
+}
+
+.colorSwatch::-webkit-color-swatch-wrapper {
+  padding: 0;
+  border-radius: 50%;
+}
+
+.colorSwatch::-webkit-color-swatch {
+  border: none;
+  border-radius: 50%;
+}
+
+.colorSwatch::-moz-color-swatch {
+  border: none;
+  border-radius: 50%;
+}
+
+.colorHex {
+  width: 76px;
+  padding: 4px 8px;
+  border-radius: 8px;
+  border: 1px solid var(--app-input-border);
+  background: var(--app-input-bg);
+  color: var(--app-input-text);
+  font-size: 0.75rem;
+  font-family: monospace;
+  font-variant-numeric: tabular-nums;
+  letter-spacing: 0.02em;
+  transition: border-color 180ms ease;
+}
+
+.colorHex:focus {
+  outline: none;
+  border-color: var(--app-range-accent);
+}
+
+/* ─── Checkbox ───────────────────────────────────────────── */
+
+.checkRow {
+  display: inline-flex;
+  align-items: center;
+  gap: 10px;
+  cursor: pointer;
+  padding-block: 2px;
+}
+
+.checkBox {
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 18px;
+  height: 18px;
+  flex-shrink: 0;
+  border-radius: 4px;
+  border: 1.5px solid var(--app-input-border);
+  background: var(--app-input-bg);
+  color: white;
+  transition:
+    background-color 160ms ease,
+    border-color 160ms ease;
+}
+
+.checkBoxChecked {
+  background: var(--app-range-accent);
+  border-color: var(--app-range-accent);
+}
+
+.checkInput {
+  position: absolute;
+  opacity: 0;
+  width: 100%;
+  height: 100%;
+  margin: 0;
+  cursor: pointer;
+}
+
+.checkLabel {
+  font-size: 0.8rem;
+  color: var(--app-text-strong);
+}
+
+/* ─── Footer ─────────────────────────────────────────────── */
 
 .sheetFooter {
   flex-shrink: 0;
@@ -158,94 +440,7 @@
   transform: scale(0.99);
 }
 
-.section {
-  display: grid;
-  row-gap: 14px;
-}
-
-.sectionHeading {
-  margin: 0;
-  letter-spacing: 0.06em;
-  text-transform: uppercase;
-  font-size: 0.72rem;
-  font-weight: 650;
-  color: var(--app-text-muted);
-}
-
-.row {
-  display: grid;
-  row-gap: 8px;
-  padding-block: 2px;
-}
-
-.rowDisabled {
-  opacity: 0.45;
-  pointer-events: none;
-}
-
-.rowHeading {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 14px;
-}
-
-.label {
-  color: inherit;
-}
-
-.valueChip {
-  display: inline-flex;
-  align-items: center;
-  gap: 6px;
-}
-
-.num {
-  width: min(142px, 38vw);
-  padding: 5px 8px;
-  border-radius: 9px;
-  border: 1px solid var(--app-input-border);
-  background: var(--app-input-bg);
-  color: var(--app-input-text);
-  font-variant-numeric: tabular-nums;
-}
-
-.range {
-  width: 100%;
-  accent-color: var(--app-range-accent);
-}
-
-.rowCompact {
-  display: grid;
-  row-gap: 8px;
-}
-
-.select {
-  width: 100%;
-  padding: 9px 10px;
-  border-radius: 10px;
-  border: 1px solid var(--app-input-border);
-  background: var(--app-input-bg);
-  color: var(--app-input-text);
-}
-
-.colorField {
-  width: 100%;
-  height: 42px;
-  padding: 0;
-  margin: 0;
-  border: none;
-  border-radius: 10px;
-}
-
-.checkRow {
-  display: inline-flex;
-  align-items: center;
-  gap: 10px;
-  font-size: 0.9rem;
-  color: inherit;
-  cursor: pointer;
-}
+/* ─── Scrim + FAB ────────────────────────────────────────── */
 
 .dim {
   position: fixed;
@@ -338,7 +533,10 @@
 @media (prefers-reduced-motion: reduce) {
   .sheet,
   .dimHide,
-  .dimShow {
+  .dimShow,
+  .sectionContent,
+  .sectionInner,
+  .chevron {
     transition: none;
   }
 }

@@ -1,50 +1,53 @@
-import { useFrame } from '@react-three/fiber';
+import { useFrame } from "@react-three/fiber";
 
-import { useEffect, useLayoutEffect, useMemo, useRef } from 'react';
+import { useEffect, useLayoutEffect, useMemo, useRef } from "react";
 
-import type { BufferGeometry, InstancedMesh } from 'three';
+import type { BufferGeometry, InstancedMesh } from "three";
 import {
   AdditiveBlending,
   DynamicDrawUsage,
   MeshBasicMaterial,
   MultiplyBlending,
   NormalBlending,
-  Object3D,
   SphereGeometry,
-  Vector3,
-} from 'three';
+} from "three";
 
-import type { TBlendModeKey, TDirectionBias, TDistributionMethod } from '../types';
-import { turbulence3 } from '../utils/noise';
-import { PARTICLE_CAPACITY, sampleMeshSurface } from '../utils/surfaceSampler';
+import type { TBlendModeKey, TDistributionMethod } from "../types";
+import type { IBoidParams } from "../sim/boidParams";
+import { BOID_DEFAULTS } from "../sim/boidParams";
+import type { IBoidParticle } from "../sim/boids3d";
+import { createBoidParticles, stepBoids } from "../sim/boids3d";
+import { PARTICLE_CAPACITY, sampleMeshSurface } from "../utils/surfaceSampler";
 
 export interface IParticleSystemProps {
   geometry: BufferGeometry;
   particleCount: number;
   distribution: TDistributionMethod;
   surfaceNormalOffset: number;
-  movementSpeed: number;
-  movementAmplitude: number;
-  directionBias: TDirectionBias;
-  vibrationFrequency: number;
-  vibrationAmplitude: number;
-  vibrationDamping: number;
-  vibrationNoiseScale: number;
   particleSize: number;
   color: string;
   opacity: number;
   blendMode: TBlendModeKey;
+  boidVisualRange: number;
+  boidSeparation: number;
+  boidAlignment: number;
+  boidCohesion: number;
+  boidHomeSpring: number;
+  boidSpeedLimit: number;
+  boidNoise: number;
+  swarmOrbitSpeed: number;
+  swarmOrbitRadius: number;
+  swarmSplitIntensity: number;
+  swarmSplitSpeed: number;
 }
-
-const TWO_PI = Math.PI * 2;
 
 const blendingForMode = (mode: TBlendModeKey) => {
   switch (mode) {
-    case 'additive':
+    case "additive":
       return AdditiveBlending;
-    case 'multiply':
+    case "multiply":
       return MultiplyBlending;
-    case 'normal':
+    case "normal":
     default:
       return NormalBlending;
   }
@@ -53,24 +56,30 @@ const blendingForMode = (mode: TBlendModeKey) => {
 export default function ParticleSystem(props: IParticleSystemProps) {
   const {
     blendMode,
+    boidAlignment,
+    boidCohesion,
+    boidHomeSpring,
+    boidNoise,
+    boidSeparation,
+    boidSpeedLimit,
+    boidVisualRange,
     color,
-    directionBias,
     distribution,
     geometry,
-    movementAmplitude,
-    movementSpeed,
     opacity,
     particleCount,
     particleSize,
     surfaceNormalOffset,
-    vibrationAmplitude,
-    vibrationDamping,
-    vibrationFrequency,
-    vibrationNoiseScale,
+    swarmOrbitSpeed,
+    swarmOrbitRadius,
+    swarmSplitIntensity,
+    swarmSplitSpeed,
   } = props;
 
   const meshRef = useRef<InstancedMesh>(null);
-  const dummy = useMemo(() => new Object3D(), []);
+  const boidsRef = useRef<IBoidParticle[]>([]);
+  const sizeRef = useRef(particleSize);
+  sizeRef.current = particleSize;
 
   const samples = useMemo(
     () => sampleMeshSurface(geometry, particleCount, distribution),
@@ -79,28 +88,51 @@ export default function ParticleSystem(props: IParticleSystemProps) {
 
   const count = samples.positions.length / 3;
 
-  const animation = useMemo(() => {
-    const movePhase = new Float32Array(count);
-    const vibPhase = new Float32Array(count);
-    const randomDir = new Float32Array(count * 3);
+  useEffect(() => {
+    boidsRef.current = createBoidParticles(
+      samples.positions,
+      samples.normals,
+      count,
+      surfaceNormalOffset,
+    );
+  }, [samples, count, surfaceNormalOffset]);
 
-    for (let index = 0; index < count; index += 1) {
-      movePhase[index] = seed01(index + 173) * TWO_PI;
-      vibPhase[index] = seed01(index + 983) * TWO_PI;
+  const boidParamsRef = useRef<IBoidParams>({ ...BOID_DEFAULTS });
 
-      const base = index * 3;
-      randomDir[base] = seed01(index * 3 + 211) * 2 - 1;
-      randomDir[base + 1] = seed01(index * 3 + 389) * 2 - 1;
-      randomDir[base + 2] = seed01(index * 3 + 571) * 2 - 1;
-      normalizeInPlace(randomDir, base);
-    }
-
-    return {
-      movePhase,
-      randomDir,
-      vibPhase,
+  useEffect(() => {
+    boidParamsRef.current = {
+      visualRange: boidVisualRange,
+      separationDist: boidVisualRange * 0.21,
+      separationFactor: boidSeparation,
+      alignmentFactor: boidAlignment,
+      cohesionFactor: boidCohesion,
+      attractorFactor: BOID_DEFAULTS.attractorFactor,
+      homeSpringFactor: boidHomeSpring,
+      maxHomeDistance: BOID_DEFAULTS.maxHomeDistance,
+      speedLimit: boidSpeedLimit,
+      minSpeed: boidSpeedLimit * 0.32,
+      noiseMagnitude: boidNoise,
+      orbitSpeed: swarmOrbitSpeed,
+      orbitRadius: swarmOrbitRadius,
+      splitIntensity: swarmSplitIntensity,
+      splitSpeed: swarmSplitSpeed,
+      splitDecay: BOID_DEFAULTS.splitDecay,
+      steeringInertia: BOID_DEFAULTS.steeringInertia,
+      velocityStretchFactor: BOID_DEFAULTS.velocityStretchFactor,
     };
-  }, [count]);
+  }, [
+    boidAlignment,
+    boidCohesion,
+    boidHomeSpring,
+    boidNoise,
+    boidSeparation,
+    boidSpeedLimit,
+    boidVisualRange,
+    swarmOrbitSpeed,
+    swarmOrbitRadius,
+    swarmSplitIntensity,
+    swarmSplitSpeed,
+  ]);
 
   const baseGeometry = useMemo(() => new SphereGeometry(1, 12, 12), []);
 
@@ -114,7 +146,6 @@ export default function ParticleSystem(props: IParticleSystemProps) {
         toneMapped: false,
         transparent: true,
       }),
-    // Stable reference — never recreate
     // eslint-disable-next-line react-hooks/exhaustive-deps
     [],
   );
@@ -123,8 +154,8 @@ export default function ParticleSystem(props: IParticleSystemProps) {
     material.color.set(color);
     material.opacity = opacity;
     material.blending = blendingForMode(blendMode);
-    material.depthWrite = blendMode === 'normal' ? opacity >= 1 : false;
-    material.transparent = opacity < 1 || blendMode !== 'normal';
+    material.depthWrite = blendMode === "normal" ? opacity >= 1 : false;
+    material.transparent = opacity < 1 || blendMode !== "normal";
     material.needsUpdate = true;
   }, [material, blendMode, color, opacity]);
 
@@ -133,10 +164,6 @@ export default function ParticleSystem(props: IParticleSystemProps) {
       material.dispose();
     };
   }, [material]);
-
-  const scratchRadial = useMemo(() => new Vector3(), []);
-  const scratchTangent = useMemo(() => new Vector3(), []);
-  const scratchNormal = useMemo(() => new Vector3(), []);
 
   useLayoutEffect(() => {
     const mesh = meshRef.current;
@@ -148,134 +175,57 @@ export default function ParticleSystem(props: IParticleSystemProps) {
     mesh.instanceMatrix.setUsage(DynamicDrawUsage);
     mesh.count = count;
 
-    dummy.rotation.set(0, 0, 0);
-    const samplePositions = samples.positions;
-    const sampleNormals = samples.normals;
+    const arr = mesh.instanceMatrix.array as Float32Array;
+    const boids = boidsRef.current;
+    const s = particleSize;
 
-    for (let index = 0; index < count; index += 1) {
-      const offset = index * 3;
-
-      dummy.position.set(
-        samplePositions[offset],
-        samplePositions[offset + 1],
-        samplePositions[offset + 2],
-      );
-
-      scratchNormal.set(
-        sampleNormals[offset],
-        sampleNormals[offset + 1],
-        sampleNormals[offset + 2],
-      );
-
-      dummy.position.addScaledVector(scratchNormal, surfaceNormalOffset);
-      dummy.scale.setScalar(particleSize);
-      dummy.updateMatrix();
-      mesh.setMatrixAt(index, dummy.matrix);
+    for (let i = 0; i < count; i += 1) {
+      const b = boids[i];
+      if (!b) continue;
+      const off = i * 16;
+      arr[off] = s;
+      arr[off + 1] = 0;
+      arr[off + 2] = 0;
+      arr[off + 3] = 0;
+      arr[off + 4] = 0;
+      arr[off + 5] = s;
+      arr[off + 6] = 0;
+      arr[off + 7] = 0;
+      arr[off + 8] = 0;
+      arr[off + 9] = 0;
+      arr[off + 10] = s;
+      arr[off + 11] = 0;
+      arr[off + 12] = b.x;
+      arr[off + 13] = b.y;
+      arr[off + 14] = b.z;
+      arr[off + 15] = 1;
     }
 
     mesh.instanceMatrix.needsUpdate = true;
-  }, [
-    count,
-    dummy,
-    particleSize,
-    samples,
-    scratchNormal,
-    surfaceNormalOffset,
-  ]);
-
-  const scratchMove = useMemo(() => new Vector3(), []);
-  const scratchTemp = useMemo(() => new Vector3(), []);
-  const up = useMemo(() => new Vector3(0, 1, 0), []);
+  }, [count, particleSize, samples]);
 
   useFrame((state) => {
     const mesh = meshRef.current;
+    const boids = boidsRef.current;
 
-    if (!mesh || count <= 0) {
+    if (!mesh || count <= 0 || boids.length === 0) {
       return;
     }
 
-    const elapsed = state.clock.elapsedTime;
-    const dampMul = 1 / (1 + vibrationDamping);
-    const { movePhase, randomDir, vibPhase } = animation;
-    const { normals, positions } = samples;
+    stepBoids(boids, boidParamsRef.current, state.clock.elapsedTime);
+
+    const arr = mesh.instanceMatrix.array as Float32Array;
+    const s = sizeRef.current;
 
     for (let i = 0; i < count; i += 1) {
-      const offset = i * 3;
-
-      scratchNormal.set(
-        normals[offset],
-        normals[offset + 1],
-        normals[offset + 2],
-      );
-
-      dummy.position.set(
-        positions[offset],
-        positions[offset + 1],
-        positions[offset + 2],
-      );
-
-      dummy.position.addScaledVector(scratchNormal, surfaceNormalOffset);
-
-      scratchRadial.copy(dummy.position).normalize();
-
-      scratchTangent.copy(scratchRadial).sub(
-        scratchTemp.copy(scratchNormal).multiplyScalar(
-          scratchRadial.dot(scratchNormal),
-        ),
-      );
-
-      if (scratchTangent.lengthSq() < 1e-6) {
-        scratchTangent.copy(up).cross(scratchNormal).normalize();
-
-        if (scratchTangent.lengthSq() < 1e-6) {
-          scratchTangent.copy(scratchNormal).cross(scratchRadial).normalize();
-        }
-      } else {
-        scratchTangent.normalize();
-      }
-
-      const randomX = randomDir[offset];
-      const randomY = randomDir[offset + 1];
-      const randomZ = randomDir[offset + 2];
-      scratchMove.set(randomX, randomY, randomZ);
-
-      switch (directionBias) {
-        case 'radial':
-          scratchMove.copy(scratchRadial);
-          break;
-        case 'tangential':
-          scratchMove.copy(scratchTangent);
-          break;
-        case 'random':
-        default:
-          break;
-      }
-
-      const oscillationMovement =
-        movementAmplitude * Math.sin(movementSpeed * elapsed + movePhase[i]);
-      dummy.position.addScaledVector(scratchMove, oscillationMovement);
-
-      const harmonic =
-        vibrationAmplitude *
-        dampMul *
-        Math.sin(elapsed * TWO_PI * vibrationFrequency + vibPhase[i]);
-
-      let noiseContribution = turbulence3(
-        dummy.position.x * vibrationNoiseScale,
-        dummy.position.y * vibrationNoiseScale,
-        dummy.position.z * vibrationNoiseScale + vibrationFrequency * elapsed * 0.18,
-        elapsed + movePhase[i] * 0.33,
-      );
-
-      noiseContribution *= vibrationAmplitude * dampMul * 0.28;
-
-      dummy.position.addScaledVector(scratchNormal, harmonic + noiseContribution);
-
-      dummy.rotation.set(0, 0, 0);
-
-      dummy.scale.setScalar(particleSize);
-      dummy.updateMatrix();
-      mesh.setMatrixAt(i, dummy.matrix);
+      const b = boids[i];
+      const off = i * 16;
+      arr[off] = s;
+      arr[off + 5] = s;
+      arr[off + 10] = s;
+      arr[off + 12] = b.x;
+      arr[off + 13] = b.y;
+      arr[off + 14] = b.z;
     }
 
     mesh.instanceMatrix.needsUpdate = true;
@@ -289,33 +239,4 @@ export default function ParticleSystem(props: IParticleSystemProps) {
       renderOrder={10}
     />
   );
-}
-
-function seed01(i: number): number {
-  const x = Math.sin(i * 12.9898) * 43758.5453;
-  return x - Math.floor(x);
-}
-
-function normalizeInPlace(store: Float32Array, ptr: number) {
-  let x = store[ptr];
-  let y = store[ptr + 1];
-  let z = store[ptr + 2];
-
-  const lenSq = x * x + y * y + z * z;
-
-  if (lenSq < 1e-12) {
-    store[ptr] = 1;
-    store[ptr + 1] = 0;
-    store[ptr + 2] = 0;
-    return;
-  }
-
-  const invLen = 1 / Math.sqrt(lenSq);
-  x *= invLen;
-  y *= invLen;
-  z *= invLen;
-
-  store[ptr] = x;
-  store[ptr + 1] = y;
-  store[ptr + 2] = z;
 }

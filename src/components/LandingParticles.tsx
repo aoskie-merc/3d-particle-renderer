@@ -1,44 +1,66 @@
 /**
- * Decorative 2D canvas: particles emit from the drop panel center, gain noise with distance,
- * and fade out toward the viewport edge.
+ * Decorative 2D canvas: boid particles swarm around the upload panel center
+ * in murmuration patterns, fading out toward the viewport edge.
  */
 
-import type { RefObject } from 'react';
-import { memo, useEffect, useRef } from 'react';
+import type { RefObject } from "react";
+import { memo, useEffect, useRef } from "react";
 
-import type { TMercuryAppearance } from '../theme';
-import { mercuryDefaultParticleHex } from '../theme';
+import type { IBoid2DParams } from "../sim/boids2d";
+import {
+  BOID_2D_DEFAULTS,
+  createBoid2DParticles,
+  repositionBoid2DParticles,
+  stepBoids2D,
+} from "../sim/boids2d";
+import { BOID_DEFAULTS } from "../sim/boidParams";
+import type { TMercuryAppearance } from "../theme";
+import { mercuryDefaultParticleHex } from "../theme";
 
-import styles from './LandingParticles.module.css';
+import styles from "./LandingParticles.module.css";
 
 const ACTIVE_COUNT = 120;
 const BASE_ALPHA = 0.72;
-const INNER_REVEAL_FR = 0.058;
-const NOISE_DISTANCE_POWER = 1.62;
+const INNER_REVEAL_PX = 14;
+const TWO_PI = Math.PI * 2;
 
 interface ILandingParticlesProps {
   anchorRef: RefObject<HTMLElement | null>;
   appearance: TMercuryAppearance;
+  boidAlignment: number;
+  boidCohesion: number;
+  boidNoise: number;
+  boidSeparation: number;
+  boidSpeedLimit: number;
+  boidVisualRange: number;
+  landingParticleCount: number;
+  landingParticleSize: number;
+  swarmOrbitSpeed: number;
+  swarmOrbitRadius: number;
+  swarmSplitIntensity: number;
+  swarmSplitSpeed: number;
 }
 
-interface IParticleSim {
-  x: number;
-  y: number;
-  vx: number;
-  vy: number;
-  t: number;
-  noiseSeed: number;
-  phaseB: number;
-  dotR: number;
+/**
+ * Map a 3D slider value to its 2D pixel-space equivalent by scaling
+ * proportionally: 2dValue = 2dDefault * (sliderValue / 3dDefault).
+ */
+function scale2D(
+  slider3D: number,
+  default3D: number,
+  default2D: number,
+): number {
+  if (default3D === 0) return default2D;
+  return default2D * (slider3D / default3D);
 }
 
 function hexToRgbTuple(hex: string): [number, number, number] {
-  let h = hex.replace('#', '');
+  let h = hex.replace("#", "");
   if (h.length === 3) {
     h = h
-      .split('')
+      .split("")
       .map((char: string): string => char + char)
-      .join('');
+      .join("");
   }
   const n = Number.parseInt(h.slice(0, 6), 16);
   if (!Number.isFinite(n)) {
@@ -47,105 +69,189 @@ function hexToRgbTuple(hex: string): [number, number, number] {
   return [(n >> 16) & 255, (n >> 8) & 255, n & 255];
 }
 
-function respawn(particle: IParticleSim, cxCss: number, cyCss: number): void {
-  const theta = Math.random() * Math.PI * 2;
-  const speed = 52 + Math.random() * 88;
-
-  particle.noiseSeed = Math.random() * Math.PI * 2;
-  particle.phaseB = Math.random() * Math.PI * 2;
-  particle.dotR = 1.1 + Math.random() * 1.9;
-  particle.x = cxCss + Math.cos(theta) * 1.5;
-  particle.y = cyCss + Math.sin(theta) * 1.5;
-  particle.vx = Math.cos(theta) * speed;
-  particle.vy = Math.sin(theta) * speed;
-  particle.t = 0;
-}
-
-function ensurePool(poolRef: { current: IParticleSim[] }): void {
-  if (poolRef.current.length === ACTIVE_COUNT) return;
-  poolRef.current = [];
-  while (poolRef.current.length < ACTIVE_COUNT) {
-    poolRef.current.push({
-      x: 0,
-      y: 0,
-      vx: 0,
-      vy: 0,
-      t: 0,
-      noiseSeed: 0,
-      phaseB: 0,
-      dotR: 2,
-    });
-  }
-}
-
-function initPoolAt(poolRef: { current: IParticleSim[] }, cxCss: number, cyCss: number): void {
-  ensurePool(poolRef);
-  for (const particle of poolRef.current) {
-    respawn(particle, cxCss, cyCss);
-  }
-}
-
 function clamp01(v: number): number {
   return Math.min(1, Math.max(0, v));
 }
 
-const LandingParticles = memo(function LandingParticles(props: ILandingParticlesProps) {
-  const { anchorRef, appearance } = props;
+const LandingParticles = memo(function LandingParticles(
+  props: ILandingParticlesProps,
+) {
+  const {
+    anchorRef,
+    appearance,
+    boidAlignment,
+    boidCohesion,
+    boidNoise,
+    boidSeparation,
+    boidSpeedLimit,
+    boidVisualRange,
+    landingParticleCount,
+    landingParticleSize,
+    swarmOrbitSpeed,
+    swarmOrbitRadius,
+    swarmSplitIntensity,
+    swarmSplitSpeed,
+  } = props;
 
   const canvasRef = useRef<HTMLCanvasElement>(null);
-  const poolRef = useRef<IParticleSim[]>([]);
+  const boidsRef = useRef<ReturnType<typeof createBoid2DParticles>>([]);
+  const countRef = useRef(landingParticleCount);
+  countRef.current = landingParticleCount;
+  const elapsedRef = useRef(0);
   const lastTsRef = useRef(0);
+  const centerRef = useRef({ cx: 0, cy: 0 });
+
+  const particleSizeRef = useRef(landingParticleSize);
+  particleSizeRef.current = landingParticleSize;
+
+  const paramsRef = useRef<IBoid2DParams>({ ...BOID_2D_DEFAULTS });
+
+  paramsRef.current = {
+    ...BOID_2D_DEFAULTS,
+    visualRange: scale2D(
+      boidVisualRange,
+      BOID_DEFAULTS.visualRange,
+      BOID_2D_DEFAULTS.visualRange,
+    ),
+    separationDist: scale2D(
+      boidVisualRange,
+      BOID_DEFAULTS.visualRange,
+      BOID_2D_DEFAULTS.separationDist,
+    ),
+    separationFactor: scale2D(
+      boidSeparation,
+      BOID_DEFAULTS.separationFactor,
+      BOID_2D_DEFAULTS.separationFactor,
+    ),
+    alignmentFactor: scale2D(
+      boidAlignment,
+      BOID_DEFAULTS.alignmentFactor,
+      BOID_2D_DEFAULTS.alignmentFactor,
+    ),
+    cohesionFactor: scale2D(
+      boidCohesion,
+      BOID_DEFAULTS.cohesionFactor,
+      BOID_2D_DEFAULTS.cohesionFactor,
+    ),
+    speedLimit: scale2D(
+      boidSpeedLimit,
+      BOID_DEFAULTS.speedLimit,
+      BOID_2D_DEFAULTS.speedLimit,
+    ),
+    minSpeed: scale2D(
+      boidSpeedLimit,
+      BOID_DEFAULTS.speedLimit,
+      BOID_2D_DEFAULTS.minSpeed,
+    ),
+    noiseMagnitude: scale2D(
+      boidNoise,
+      BOID_DEFAULTS.noiseMagnitude,
+      BOID_2D_DEFAULTS.noiseMagnitude,
+    ),
+    orbitSpeed: scale2D(
+      swarmOrbitSpeed,
+      BOID_DEFAULTS.orbitSpeed,
+      BOID_2D_DEFAULTS.orbitSpeed,
+    ),
+    orbitRadiusX: scale2D(
+      swarmOrbitRadius,
+      BOID_DEFAULTS.orbitRadius,
+      BOID_2D_DEFAULTS.orbitRadiusX,
+    ),
+    orbitRadiusY: scale2D(
+      swarmOrbitRadius,
+      BOID_DEFAULTS.orbitRadius,
+      BOID_2D_DEFAULTS.orbitRadiusY,
+    ),
+    splitIntensity: scale2D(
+      swarmSplitIntensity,
+      BOID_DEFAULTS.splitIntensity,
+      BOID_2D_DEFAULTS.splitIntensity,
+    ),
+    splitSpeed: scale2D(
+      swarmSplitSpeed,
+      BOID_DEFAULTS.splitSpeed,
+      BOID_2D_DEFAULTS.splitSpeed,
+    ),
+  };
 
   useEffect(() => {
     const canvas = canvasRef.current;
 
     if (!canvas) return undefined;
 
-    const ctxRaw = canvas.getContext('2d');
+    const ctxRaw = canvas.getContext("2d");
 
     if (!ctxRaw) return undefined;
 
     const ctx = ctxRaw;
 
-    const rgbCsv = hexToRgbTuple(mercuryDefaultParticleHex(appearance)).join(', ');
+    const [cr, cg, cb] = hexToRgbTuple(mercuryDefaultParticleHex(appearance));
+    const solidFill = `rgb(${cr}, ${cg}, ${cb})`;
 
     let rafId = 0;
 
-    const resizeAndRespawnAll = (): void => {
-      const parent = canvas.parentElement;
-      const cssW = Math.max(8, Math.floor(parent?.clientWidth ?? window.innerWidth));
-      const cssH = Math.max(8, Math.floor(parent?.clientHeight ?? window.innerHeight));
-      const dpr = Math.min(2.5, Math.max(1, window.devicePixelRatio ?? 1));
-
-      canvas.width = Math.round(cssW * dpr);
-      canvas.height = Math.round(cssH * dpr);
-
-      let cxCss = cssW / 2;
-      let cyCss = cssH / 2;
+    const updateCenter = (): void => {
+      const cssW = canvas.clientWidth;
+      const cssH = canvas.clientHeight;
+      let cx = cssW / 2;
+      let cy = cssH / 2;
 
       if (anchorRef.current) {
         const ar = anchorRef.current.getBoundingClientRect();
         const lr = canvas.getBoundingClientRect();
 
-        cxCss = ar.left + ar.width / 2 - lr.left;
-        cyCss = ar.top + ar.height / 2 - lr.top;
+        cx = ar.left + ar.width / 2 - lr.left;
+        cy = ar.top + ar.height / 2 - lr.top;
       }
 
-      initPoolAt(poolRef, cxCss, cyCss);
+      centerRef.current.cx = cx;
+      centerRef.current.cy = cy;
+    };
+
+    const resizeCanvas = (): void => {
+      const parent = canvas.parentElement;
+      const cssW = Math.max(
+        8,
+        Math.floor(parent?.clientWidth ?? window.innerWidth),
+      );
+      const cssH = Math.max(
+        8,
+        Math.floor(parent?.clientHeight ?? window.innerHeight),
+      );
+      const dpr = Math.min(2.5, Math.max(1, window.devicePixelRatio ?? 1));
+
+      canvas.width = Math.round(cssW * dpr);
+      canvas.height = Math.round(cssH * dpr);
+
+      updateCenter();
+      const { cx, cy } = centerRef.current;
+
+      const safeCount = Number.isFinite(landingParticleCount) && landingParticleCount > 0 ? Math.round(landingParticleCount) : 120;
+      if (boidsRef.current.length === 0) {
+        boidsRef.current = createBoid2DParticles(safeCount, cx, cy);
+      } else {
+        const valid = boidsRef.current.filter((b) => b != null);
+        boidsRef.current = valid;
+        if (valid.length > 0) {
+          repositionBoid2DParticles(boidsRef.current, cx, cy);
+        }
+      }
     };
 
     const ro =
-      typeof ResizeObserver !== 'undefined'
+      typeof ResizeObserver !== "undefined"
         ? new ResizeObserver(() => {
-            resizeAndRespawnAll();
+            resizeCanvas();
           })
         : null;
 
     if (canvas.parentElement) ro?.observe(canvas.parentElement);
-    window.addEventListener('resize', resizeAndRespawnAll);
-    resizeAndRespawnAll();
+    window.addEventListener("resize", resizeCanvas);
+    resizeCanvas();
 
     lastTsRef.current = 0;
+    elapsedRef.current = 0;
 
     const tick = (now: number): void => {
       rafId = window.requestAnimationFrame(tick);
@@ -160,103 +266,60 @@ const LandingParticles = memo(function LandingParticles(props: ILandingParticles
 
       dt = Math.min(dt, 0.05);
 
+      elapsedRef.current += dt;
+
       const cssW = canvas.clientWidth;
       const cssH = canvas.clientHeight;
 
-      let cxCss = cssW / 2;
-      let cyCss = cssH / 2;
+      updateCenter();
+      const { cx, cy } = centerRef.current;
 
-      if (anchorRef.current) {
-        const ar = anchorRef.current.getBoundingClientRect();
-        const lr = canvas.getBoundingClientRect();
-
-        cxCss = ar.left + ar.width / 2 - lr.left;
-        cyCss = ar.top + ar.height / 2 - lr.top;
+      const rawCount = countRef.current;
+      const target = Number.isFinite(rawCount) && rawCount > 0 ? Math.round(rawCount) : 120;
+      const current = boidsRef.current.length;
+      if (current < target) {
+        const extra = createBoid2DParticles(target - current, cx, cy);
+        for (let i = 0; i < extra.length; i++) {
+          boidsRef.current.push(extra[i]);
+        }
+      } else if (current > target) {
+        boidsRef.current.splice(target);
       }
 
-      const fadeDist = Math.hypot(cssW, cssH) * 0.52;
+      const fadeDist = Math.sqrt(cssW * cssW + cssH * cssH) * 0.52;
+      const fadeInner = fadeDist * 0.28;
+      const fadeRange = fadeDist * 0.78;
+      const invFadeRange = fadeRange > 0 ? 1 / fadeRange : 0;
 
-      const innerRevealPx = Math.max(22, fadeDist * INNER_REVEAL_FR);
-
-      ensurePool(poolRef);
+      stepBoids2D(boidsRef.current, paramsRef.current, elapsedRef.current, dt);
 
       ctx.setTransform(canvas.width / cssW, 0, 0, canvas.height / cssH, 0, 0);
       ctx.clearRect(0, 0, cssW + 4, cssH + 4);
 
-      const rgb = rgbCsv;
+      ctx.fillStyle = solidFill;
 
-      for (const particle of poolRef.current) {
-        particle.t += dt;
+      const boids = boidsRef.current;
+      for (let bi = 0; bi < boids.length; bi++) {
+        const boid = boids[bi];
+        const dx = boid.x - cx;
+        const dy = boid.y - cy;
+        const distCss = Math.sqrt(dx * dx + dy * dy);
 
-        const rdx = particle.x - cxCss;
-        const rdy = particle.y - cyCss;
+        const innerAlpha = clamp01((distCss - 1) / INNER_REVEAL_PX);
 
-        const distCss = Math.hypot(rdx, rdy);
-
-        let rxOut: number;
-        let ryOut: number;
-
-        if (distCss > 14) {
-          rxOut = rdx / distCss;
-          ryOut = rdy / distCss;
-        } else {
-          const speedMag = Math.hypot(particle.vx, particle.vy);
-
-          if (speedMag > 8) {
-            rxOut = particle.vx / speedMag;
-            ryOut = particle.vy / speedMag;
-          } else {
-            rxOut = 1;
-            ryOut = 0;
-          }
-        }
-
-        const px = -ryOut;
-        const py = rxOut;
-
-        const noiseT = clamp01(
-          (distCss - innerRevealPx * 0.4) / Math.max(18, fadeDist * 0.72),
-        );
-
-        const noiseMag = noiseT ** NOISE_DISTANCE_POWER;
-
-        const w1 = Math.sin(particle.t * 10.2 + particle.noiseSeed);
-        const w2 = Math.cos(particle.t * 6.7 + particle.phaseB);
-
-        /** Perpendicular jitter grows with distance from emitter. */
-
-        particle.vx += (w1 * px + w2 * py * 0.35) * noiseMag * 62 * dt;
-        particle.vy += (w1 * py - w2 * px * 0.35) * noiseMag * 62 * dt;
-
-        /** Mild outward bias so motion stays generally radial. */
-
-        particle.vx += rxOut * 14 * dt;
-        particle.vy += ryOut * 14 * dt;
-
-        particle.vx *= 1 - 0.22 * dt;
-        particle.vy *= 1 - 0.22 * dt;
-
-        particle.x += particle.vx * dt;
-        particle.y += particle.vy * dt;
-
-        const postDist = Math.hypot(particle.x - cxCss, particle.y - cyCss);
-
-        const innerAlpha = clamp01((postDist - 1) / innerRevealPx);
-
-        const edgeAlpha = 1 - clamp01((postDist - fadeDist * 0.28) / (fadeDist * 0.78));
+        const edgeAlpha = 1 - clamp01((distCss - fadeInner) * invFadeRange);
 
         const alpha = BASE_ALPHA * innerAlpha * edgeAlpha;
 
-        if (alpha < 0.018 || postDist > fadeDist * 1.12) {
-          respawn(particle, cxCss, cyCss);
-          continue;
-        }
+        if (alpha < 0.018) continue;
 
-        ctx.fillStyle = `rgba(${rgb}, ${alpha.toFixed(4)})`;
+        ctx.globalAlpha = alpha;
         ctx.beginPath();
-        ctx.arc(particle.x, particle.y, particle.dotR, 0, Math.PI * 2);
+        ctx.arc(boid.x, boid.y, particleSizeRef.current, 0, TWO_PI);
         ctx.fill();
       }
+
+      ctx.globalAlpha = 1;
     };
 
     rafId = window.requestAnimationFrame(tick);
@@ -264,7 +327,7 @@ const LandingParticles = memo(function LandingParticles(props: ILandingParticles
     return () => {
       window.cancelAnimationFrame(rafId);
       ro?.disconnect();
-      window.removeEventListener('resize', resizeAndRespawnAll);
+      window.removeEventListener("resize", resizeCanvas);
     };
   }, [anchorRef, appearance]);
 
